@@ -245,11 +245,8 @@
           selectedWinnerKey: hasValidWinner ? cfg.selectedWinnerKey : "random",
 
           // Bomb mode state
-          bombHolder: null,
-          bombTimer: cfg.bombTimer,
-          bombMaxTimer: cfg.bombTimer,
-          bombTransferCooldown: 0,
-          bombTickAccum: 0,
+          bombs: [], // { holder, timer, max, cooldown, tick }
+          tempo: 1,
 
           // Visual FX
           bgParticles: createBgParticles(),
@@ -259,27 +256,34 @@
         };
 
         if (cfg.mode === "bomb" && badges.length >= 2) {
-          assignNewBomb(state, cfg);
+          syncBombs(state, cfg);
         }
 
         return state;
       }
 
-      function assignNewBomb(state, cfg) {
-        const alive = state.badges.filter((b) => !b.eliminated);
-        if (alive.length <= 1) {
-          state.bombHolder = null;
-          return;
-        }
-        // Seçili kazanan varsa ilk bombayı diğerlerinden birine verme eğilimi
-        const nonWinners = alive.filter((b) => b.club.key !== state.selectedWinnerKey);
-        const pool = nonWinners.length > 0 && Math.random() < 0.72 ? nonWinners : alive;
-        state.bombHolder = pool[Math.floor(Math.random() * pool.length)];
-        state.bombMaxTimer = cfg.bombTimer;
-        state.bombTimer = cfg.bombTimer;
-        state.bombTransferCooldown = 0.25;
-        state.bombTickAccum = 0;
+      // Takım sayısına göre aynı anda kaç bomba olacağı (çok takım = çok bomba, final = tek bomba)
+      function desiredBombCount(aliveCount) {
+        return Math.max(1, Math.min(6, Math.floor(aliveCount / 7)));
       }
+      function bombOf(state, badge) {
+        return state.bombs.find((bm) => bm.holder === badge) || null;
+      }
+      function syncBombs(state, cfg) {
+        state.bombs = state.bombs.filter((bm) => bm.holder && !bm.holder.eliminated);
+        const alive = state.badges.filter((b) => !b.eliminated);
+        if (alive.length <= 1) { state.bombs = []; return; }
+        const want = Math.min(desiredBombCount(alive.length), alive.length - 1);
+        while (state.bombs.length < want) {
+          const free = alive.filter((b) => !bombOf(state, b));
+          const nonWinners = free.filter((b) => b.club.key !== state.selectedWinnerKey);
+          const pool = nonWinners.length > 0 && Math.random() < 0.85 ? nonWinners : free;
+          if (!pool.length) break;
+          const t = cfg.bombTimer * (state.bombs.length ? 0.75 + Math.random() * 0.6 : 1);
+          state.bombs.push({ holder: pool[Math.floor(Math.random() * pool.length)], timer: t, max: t, cooldown: 0.25, tick: 0 });
+        }
+      }
+      function assignNewBomb(state, cfg) { syncBombs(state, cfg); }
 
       function spawnSparks(state, x, y, color = "#e0f2fe", count = 8, speed = 260) {
         for (let i = 0; i < count; i++) {
@@ -356,7 +360,7 @@
           state.winner = survivors[0];
           state.winnerTime = 0;
           state.confettiWave2Fired = false;
-          state.bombHolder = null;
+          state.bombs = [];
           spawnConfettiWave(state, 150);
           emitAudio({ type: "victory" });
         }
@@ -375,7 +379,31 @@
         // Son 2 Ağır Çekim (Slow-Mo Finale)
         state.slowMoActive = !state.winner && cfg.slowMoFinale && aliveCount === 2;
         const slowFactor = state.slowMoActive ? 0.45 : 1.0;
-        const dt = state.winner ? rawDt : rawDt * cfg.simSpeed * slowFactor;
+
+        // OTOMATİK TEMPO: video hedef sürede bitsin diye oyun gerekirse kendini hızlandırır
+        if (!state.winner) {
+          let desired = 1;
+          const target = cfg.targetDuration || 0;
+          if (target > 0 && aliveCount > 2) {
+            const prePhase = Math.max(12, target - 15); // final düellosu + kutlama payı
+            const elimNeeded = Math.max(1, state.totalClubs - 2);
+            const elimDone = state.totalClubs - aliveCount;
+            const perElimTarget = prePhase / elimNeeded;
+            if (elimDone >= 1) {
+              const projected = (state.simTime / elimDone) * elimNeeded;
+              desired = projected / prePhase;
+            } else {
+              desired = Math.max(1, state.simTime / (perElimTarget * 1.6));
+            }
+            if (state.simTime > prePhase) desired = Math.max(desired, 1 + (state.simTime - prePhase) / 4);
+            desired = Math.max(0.6, Math.min(3.4, desired)); // çok hızlı bitiyorsa biraz yavaşlar
+          } else if (target > 0 && aliveCount === 2 && state.simTime > target - 7) {
+            desired = Math.min(1.8, 1 + (state.simTime - (target - 7)) / 5); // final düellosu uzarsa hafifçe hızlan
+          }
+          state.tempo += (desired - state.tempo) * Math.min(1, rawDt * 0.9);
+        }
+        const tempo = state.winner ? 1 : state.tempo;
+        const dt = state.winner ? rawDt : rawDt * cfg.simSpeed * slowFactor * tempo;
         state.simTime += rawDt;
 
         // Arka plan parçacıkları
@@ -444,7 +472,11 @@
           : BASE_RING_R;
         state.ringRadius += (targetRingR - state.ringRadius) * Math.min(1, rawDt * 3.0);
 
-        const subSteps = Math.max(4, Math.ceil(cfg.simSpeed * 4));
+        const subSteps = Math.max(4, Math.ceil(cfg.simSpeed * tempo * 4));
+
+        // Elendikçe kalan logolar seçilen boyuta doğru büyür
+        const fitR = computeBadgeRadius(cfg.logoRadius, aliveCount) * (state.mode === "ring" && cfg.growSurvivor ? 1.15 : 1);
+        for (const b of aliveList) b.r += (fitR - b.r) * Math.min(1, rawDt * 1.6);
         const subDt = dt / subSteps;
 
         // Mod bazlı yerçekimi & hız ölçeği
@@ -467,54 +499,55 @@
           state.timeSinceLastElim > 9.0
         );
 
-        // SAATLİ BOMBA GERİ SAYIM & TİK SESİ
-        if (state.mode === "bomb" && state.bombHolder && !state.bombHolder.eliminated) {
-          state.bombTimer -= dt;
-          if (state.bombTransferCooldown > 0) state.bombTransferCooldown = Math.max(0, state.bombTransferCooldown - dt);
-
-          const urgency = 1 - Math.max(0, state.bombTimer / state.bombMaxTimer);
-          const tickInterval = Math.max(0.11, 0.52 - urgency * 0.40);
-          state.bombTickAccum += dt;
-          if (state.bombTickAccum >= tickInterval) {
-            state.bombTickAccum = 0;
-            emitAudio({ type: "tick", urgency });
-          }
-
-          // Seçili kazanan bomba tutuyorsa süre bitmeden en yakın rakibe doğal devir (plot armor)
-          if (state.selectedWinnerKey !== "random" && state.bombHolder.club.key === state.selectedWinnerKey) {
-            let nearest = null;
-            let bestD = Infinity;
-            for (const other of aliveList) {
-              if (other === state.bombHolder) continue;
-              const d = Math.hypot(other.x - state.bombHolder.x, other.y - state.bombHolder.y);
-              if (d < bestD) { bestD = d; nearest = other; }
+        // SAATLİ BOMBALAR: GERİ SAYIM, TİK SESİ, PATLAMA (çoklu bomba)
+        if (state.mode === "bomb" && state.bombs.length) {
+          let tickedThisFrame = false;
+          for (const bm of [...state.bombs]) {
+            if (!bm.holder || bm.holder.eliminated || state.winner) continue;
+            bm.timer -= dt;
+            if (bm.cooldown > 0) bm.cooldown = Math.max(0, bm.cooldown - dt);
+            const urgency = 1 - Math.max(0, bm.timer / bm.max);
+            const tickInterval = Math.max(0.11, 0.52 - urgency * 0.40);
+            bm.tick += dt;
+            if (bm.tick >= tickInterval) {
+              bm.tick = 0;
+              if (!tickedThisFrame) { emitAudio({ type: "tick", urgency }); tickedThisFrame = true; }
             }
-            if (nearest) {
-              const nx = (nearest.x - state.bombHolder.x) / (bestD || 1);
-              const ny = (nearest.y - state.bombHolder.y) / (bestD || 1);
-              const boost = state.bombTimer < 1.1 ? 920 : 420;
-              state.bombHolder.vx += nx * boost * dt;
-              state.bombHolder.vy += ny * boost * dt;
-              // Son 0.28 saniyede hala elindeyse yıldırım pası
-              if (state.bombTimer <= 0.28) {
-                state.bombHolder = nearest;
-                state.bombTransferCooldown = 0.4;
-                spawnSparks(state, nearest.x, nearest.y, "#facc15", 12, 320);
+
+            // Seçili kazanan bomba tutuyorsa süre bitmeden en yakın boştaki rakibe devreder
+            if (state.selectedWinnerKey !== "random" && bm.holder.club.key === state.selectedWinnerKey) {
+              let nearest = null, bestD = Infinity;
+              for (const other of aliveList) {
+                if (other === bm.holder || bombOf(state, other)) continue;
+                const d = Math.hypot(other.x - bm.holder.x, other.y - bm.holder.y);
+                if (d < bestD) { bestD = d; nearest = other; }
+              }
+              if (nearest) {
+                const nx = (nearest.x - bm.holder.x) / (bestD || 1);
+                const ny = (nearest.y - bm.holder.y) / (bestD || 1);
+                const boost = bm.timer < 1.1 ? 920 : 420;
+                bm.holder.vx += nx * boost * dt;
+                bm.holder.vy += ny * boost * dt;
+                if (bm.timer <= 0.28) {
+                  bm.holder = nearest;
+                  bm.cooldown = 0.4;
+                  spawnSparks(state, nearest.x, nearest.y, "#facc15", 12, 320);
+                }
               }
             }
-          }
 
-          // Patlama!
-          if (state.bombTimer <= 0 && state.bombHolder) {
-            const victim = state.bombHolder;
-            spawnSparks(state, victim.x, victim.y, "#f97316", 34, 480);
-            spawnSparks(state, victim.x, victim.y, "#fef08a", 20, 340);
-            spawnShockwave(state, victim.x, victim.y, "#f97316", 260);
-            state.shakeIntensity = 20;
-            emitAudio({ type: "explode" });
-            eliminateBadge(state, victim, cfg, emitAudio, `💥 ${victim.club.name} PATLADI!`, "#fb923c", true);
-            if (!state.winner) assignNewBomb(state, cfg);
+            if (bm.timer <= 0 && !state.winner) {
+              const victim = bm.holder;
+              state.bombs.splice(state.bombs.indexOf(bm), 1);
+              spawnSparks(state, victim.x, victim.y, "#f97316", 34, 480);
+              spawnSparks(state, victim.x, victim.y, "#fef08a", 20, 340);
+              spawnShockwave(state, victim.x, victim.y, "#f97316", 260);
+              state.shakeIntensity = 20;
+              emitAudio({ type: "explode" });
+              eliminateBadge(state, victim, cfg, emitAudio, `💥 ${victim.club.name} PATLADI!`, "#fb923c", true);
+            }
           }
+          if (!state.winner) syncBombs(state, cfg);
         }
 
         // FİZİK ALT ADIMLARI
@@ -672,7 +705,7 @@
                   b.vx += perpX * side * 340;
                   b.vy += perpY * side * 340;
 
-                  if (isProtected && b.hp <= 1) {
+                  if ((isProtected && b.hp <= 1) || (b.hp <= 1 && !lethalHitAllowed(state, cfg))) {
                     // Kalkan kıvılcımıyla sektir
                     spawnSparks(state, b.x, b.y, "#38bdf8", 12, 320);
                     emitAudio({ type: "clang" });
@@ -731,14 +764,15 @@
                 }
 
                 // SAATLİ BOMBA DEVRİ
-                if (state.mode === "bomb" && state.bombTransferCooldown <= 0) {
-                  if (state.bombHolder === a) {
-                    state.bombHolder = b;
-                    state.bombTransferCooldown = 0.36;
+                if (state.mode === "bomb") {
+                  const ba = bombOf(state, a), bb = bombOf(state, b);
+                  if (ba && !bb && ba.cooldown <= 0) {
+                    ba.holder = b;
+                    ba.cooldown = 0.36;
                     spawnSparks(state, (a.x + b.x) / 2, (a.y + b.y) / 2, "#facc15", 10, 260);
-                  } else if (state.bombHolder === b) {
-                    state.bombHolder = a;
-                    state.bombTransferCooldown = 0.36;
+                  } else if (bb && !ba && bb.cooldown <= 0) {
+                    bb.holder = a;
+                    bb.cooldown = 0.36;
                     spawnSparks(state, (a.x + b.x) / 2, (a.y + b.y) / 2, "#facc15", 10, 260);
                   }
                 }
@@ -792,3 +826,5 @@
           b.vAngle *= 0.99;
         }
       }
+
+      // Hedef süreye göre iki eleme arasında olması gereken en kısa süre (Kılıç & Lazer modları)
