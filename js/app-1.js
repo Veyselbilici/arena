@@ -10,36 +10,26 @@
 
       const THEMES = {
         ucl: {
-          name: "UEFA Champions League",
+          name: "UEFA Şampiyonlar Ligi",
           subDefault: "UEFA CHAMPIONS LEAGUE",
+          leagueSlug: "uefa.champions",
           bg0: "#162d7d", bg1: "#080e2e", bg2: "#040718", bg3: "#02030c",
           rayColor: "rgba(56, 189, 248, 0.14)",
           auraColor: "rgba(37, 99, 235, 0.28)",
           ringStroke: "#ffffff",
           ringGlow: "rgba(147, 197, 253, 0.92)",
           outerRing: "rgba(191, 219, 254, 0.30)",
-          subColor: "#facc15",
+          subColor: "#e2e8f0",
           sparkColor: "#bae6fd",
-          trophyType: "silver",
-          emberMode: false
-        },
-        superlig: {
-          name: "Süper Lig / Derbi Ateşi",
-          subDefault: "SÜPER LİG DERBİ ARENASI",
-          bg0: "#5c0f1d", bg1: "#25060e", bg2: "#120308", bg3: "#070104",
-          rayColor: "rgba(250, 204, 21, 0.14)",
-          auraColor: "rgba(220, 38, 38, 0.32)",
-          ringStroke: "#fef08a",
-          ringGlow: "rgba(245, 158, 11, 0.92)",
-          outerRing: "rgba(251, 146, 60, 0.34)",
-          subColor: "#fde047",
-          sparkColor: "#fdba74",
-          trophyType: "gold",
-          emberMode: true
+          trophy: "ucl",
+          emberMode: false,
+          wm: { accent: "#cbd5e1", glyph: "star" },
+          sound: { key: 0, wave: "triangle", brass: "sawtooth", fanfare: [293.66, 369.99, 440, 587.33, 739.99, 880], crowd: 0.55 }
         },
         europa: {
-          name: "Europa League",
+          name: "UEFA Avrupa Ligi",
           subDefault: "UEFA EUROPA LEAGUE",
+          leagueSlug: "uefa.europa",
           bg0: "#4c1d09", bg1: "#1c0a04", bg2: "#0c0402", bg3: "#050201",
           rayColor: "rgba(249, 115, 22, 0.16)",
           auraColor: "rgba(234, 88, 12, 0.34)",
@@ -48,12 +38,49 @@
           outerRing: "rgba(251, 146, 60, 0.36)",
           subColor: "#fb923c",
           sparkColor: "#fdba74",
-          trophyType: "gold",
-          emberMode: true
+          trophy: "europa",
+          emberMode: true,
+          wm: { accent: "#fb923c", glyph: "bar" },
+          sound: { key: -2, wave: "sawtooth", brass: "sawtooth", fanfare: [261.63, 329.63, 392, 523.25, 659.25, 783.99], crowd: 0.5 }
+        },
+        conference: {
+          name: "UEFA Konferans Ligi",
+          subDefault: "UEFA CONFERENCE LEAGUE",
+          leagueSlug: "uefa.europa.conf",
+          bg0: "#0f3d2a", bg1: "#062016", bg2: "#03110b", bg3: "#010805",
+          rayColor: "rgba(163, 230, 53, 0.13)",
+          auraColor: "rgba(34, 197, 94, 0.28)",
+          ringStroke: "#ecfccb",
+          ringGlow: "rgba(163, 230, 53, 0.9)",
+          outerRing: "rgba(190, 242, 100, 0.32)",
+          subColor: "#bef264",
+          sparkColor: "#d9f99d",
+          trophy: "conference",
+          emberMode: false,
+          wm: { accent: "#a3e635", glyph: "dot" },
+          sound: { key: 3, wave: "square", brass: "square", fanfare: [329.63, 415.3, 493.88, 659.25, 830.61, 987.77], crowd: 0.4 }
+        },
+        superlig: {
+          name: "Süper Lig / Derbi Ateşi",
+          subDefault: "TÜRKİYE SÜPER LİG",
+          leagueSlug: "tur.1",
+          bg0: "#5c0f1d", bg1: "#25060e", bg2: "#120308", bg3: "#070104",
+          rayColor: "rgba(250, 204, 21, 0.14)",
+          auraColor: "rgba(220, 38, 38, 0.32)",
+          ringStroke: "#fef08a",
+          ringGlow: "rgba(245, 158, 11, 0.92)",
+          outerRing: "rgba(251, 146, 60, 0.34)",
+          subColor: "#fde047",
+          sparkColor: "#fdba74",
+          trophy: "superlig",
+          emberMode: true,
+          wm: { accent: "#ef4444", glyph: "crescent" },
+          sound: { key: 1, wave: "sawtooth", brass: "sawtooth", fanfare: [277.18, 349.23, 415.3, 554.37, 698.46, 830.61], crowd: 0.9, drums: true }
         },
         worldcup: {
-          name: "Dünya Kupası / Altın Arena",
-          subDefault: "WORLD CHAMPIONS ARENA",
+          name: "Dünya Kupası / Milli Takımlar",
+          subDefault: "WORLD CUP SURVIVAL",
+          leagueSlug: "fifa.world",
           bg0: "#0b4632", bg1: "#052219", bg2: "#03120d", bg3: "#010806",
           rayColor: "rgba(250, 204, 21, 0.15)",
           auraColor: "rgba(16, 185, 129, 0.28)",
@@ -62,10 +89,58 @@
           outerRing: "rgba(250, 204, 21, 0.32)",
           subColor: "#facc15",
           sparkColor: "#fde047",
-          trophyType: "gold",
-          emberMode: false
+          trophy: "worldcup",
+          emberMode: false,
+          wm: { accent: "#facc15", glyph: "diamond" },
+          sound: { key: 5, wave: "triangle", brass: "sawtooth", fanfare: [349.23, 440, 523.25, 698.46, 880, 1046.5], crowd: 0.75, drums: true }
+        },
+        league: {
+          name: "Ulusal Lig (Premium)",
+          subDefault: "LEAGUE SURVIVAL",
+          leagueSlug: null,
+          bg0: "#1f2937", bg1: "#0d1320", bg2: "#070b14", bg3: "#03050a",
+          rayColor: "rgba(45, 212, 191, 0.12)",
+          auraColor: "rgba(20, 184, 166, 0.24)",
+          ringStroke: "#f1f5f9",
+          ringGlow: "rgba(94, 234, 212, 0.85)",
+          outerRing: "rgba(153, 246, 228, 0.28)",
+          subColor: "#5eead4",
+          sparkColor: "#ccfbf1",
+          trophy: "league",
+          emberMode: false,
+          wm: { accent: "#2dd4bf", glyph: "chevron" },
+          sound: { key: -1, wave: "triangle", brass: "triangle", fanfare: [246.94, 311.13, 369.99, 493.88, 622.25, 739.99], crowd: 0.6 }
         }
       };
+
+      // Büyük ligler için renk varyasyonlu kendi temaları
+      const LEAGUE_THEME_VARIANTS = {
+        premier:    { name: "Premier League", sub: "PREMIER LEAGUE", slug: "eng.1", bg: ["#3d0d4f", "#1a0624", "#0c0312", "#050108"], accent: "#e879f9", glow: "rgba(217, 70, 239, 0.9)", key: 2, glyph: "chevron" },
+        laliga:     { name: "LaLiga", sub: "LALIGA", slug: "esp.1", bg: ["#5a1408", "#260804", "#130402", "#070101"], accent: "#fb7185", glow: "rgba(244, 63, 94, 0.9)", key: 4, glyph: "dot" },
+        seriea:     { name: "Serie A", sub: "SERIE A", slug: "ita.1", bg: ["#0b2e5c", "#061630", "#030b19", "#01050c"], accent: "#38bdf8", glow: "rgba(14, 165, 233, 0.9)", key: -3, glyph: "diamond" },
+        bundesliga: { name: "Bundesliga", sub: "BUNDESLIGA", slug: "ger.1", bg: ["#4a0a0a", "#220505", "#110303", "#060101"], accent: "#f87171", glow: "rgba(239, 68, 68, 0.9)", key: -4, glyph: "bar" },
+        ligue1:     { name: "Ligue 1", sub: "LIGUE 1", slug: "fra.1", bg: ["#10233f", "#081221", "#040911", "#010307"], accent: "#a3e635", glow: "rgba(132, 204, 22, 0.85)", key: 6, glyph: "star" },
+        eredivisie: { name: "Eredivisie", sub: "EREDIVISIE", slug: "ned.1", bg: ["#5a2a05", "#291303", "#140901", "#070300"], accent: "#fb923c", glow: "rgba(249, 115, 22, 0.9)", key: 0, glyph: "bar" },
+        liga_pt:    { name: "Liga Portugal", sub: "LIGA PORTUGAL", slug: "por.1", bg: ["#083d2c", "#041d15", "#020e0a", "#010604"], accent: "#facc15", glow: "rgba(250, 204, 21, 0.85)", key: -5, glyph: "diamond" }
+      };
+      Object.entries(LEAGUE_THEME_VARIANTS).forEach(([k, v]) => {
+        const base = THEMES.league;
+        THEMES[k] = {
+          ...base,
+          name: v.name,
+          subDefault: v.sub,
+          leagueSlug: v.slug,
+          bg0: v.bg[0], bg1: v.bg[1], bg2: v.bg[2], bg3: v.bg[3],
+          rayColor: v.glow.replace(/[\d.]+\)$/, "0.13)"),
+          auraColor: v.glow.replace(/[\d.]+\)$/, "0.26)"),
+          ringGlow: v.glow,
+          outerRing: v.glow.replace(/[\d.]+\)$/, "0.3)"),
+          subColor: v.accent,
+          sparkColor: v.accent,
+          wm: { accent: v.accent, glyph: v.glyph },
+          sound: { ...base.sound, key: v.key }
+        };
+      });
 
       const INITIAL_CLUBS = [
         // ===== TÜRKİYE SÜPER LİG & TÜRK KULÜPLERİ (20) =====
@@ -241,13 +316,14 @@
           ? `https://flagcdn.com/w160/${c.iso2}.png`
           : `https://a.espncdn.com/i/teamlogos/soccer/500/${c.id}.png`,
         isFlag: !!c.iso2,
+        tags: [c.cat],
         sprite: null,
         realLoaded: false,
         loadingStarted: false,
         custom: false
       }));
 
-      let activeModalCategory = "all";
+      let activeModalCategory = "selected";
       let localSearchTerm = "";
 
       /* =========================================================================
@@ -280,80 +356,3 @@
       const renderDurationText = document.getElementById("renderDurationText");
       const renderClubsText = document.getElementById("renderClubsText");
       const renderSpeedText = document.getElementById("renderSpeedText");
-      const btnCancelRender = document.getElementById("btnCancelRender");
-
-      // Preview controls
-      const previewElapsedEl = document.getElementById("previewElapsed");
-      const previewRemainingEl = document.getElementById("previewRemaining");
-      const btnPreviewToggle = document.getElementById("btnPreviewToggle");
-      const previewIcon = document.getElementById("previewIcon");
-      const previewLabel = document.getElementById("previewLabel");
-      const btnPreviewReset = document.getElementById("btnPreviewReset");
-
-      // Club modal
-      const clubModal = document.getElementById("clubModal");
-      const btnCloseClubModal = document.getElementById("btnCloseClubModal");
-      const clubGrid = document.getElementById("clubGrid");
-      const modalSelectedCount = document.getElementById("modalSelectedCount");
-      const presetBtns = document.querySelectorAll(".preset-btn");
-      const catTabs = document.querySelectorAll(".cat-tab");
-      const localTeamSearch = document.getElementById("localTeamSearch");
-      const btnSelectAllVisible = document.getElementById("btnSelectAllVisible");
-      const btnClearAllClubs = document.getElementById("btnClearAllClubs");
-      const btnRandom36 = document.getElementById("btnRandom36");
-      const onlineTeamQuery = document.getElementById("onlineTeamQuery");
-      const btnOnlineSearch = document.getElementById("btnOnlineSearch");
-      const onlineSearchLabel = document.getElementById("onlineSearchLabel");
-      const onlineSearchResults = document.getElementById("onlineSearchResults");
-      const manualTeamName = document.getElementById("manualTeamName");
-      const manualTeamUrl = document.getElementById("manualTeamUrl");
-      const btnAddManualTeam = document.getElementById("btnAddManualTeam");
-      const btnApplyClubs = document.getElementById("btnApplyClubs");
-      const modalCustomLogoInput = document.getElementById("modalCustomLogoInput");
-
-      // Mode inputs
-      const sliderGap = document.getElementById("sliderGap");
-      const valGap = document.getElementById("valGap");
-      const sliderRingSpeed = document.getElementById("sliderRingSpeed");
-      const valRingSpeed = document.getElementById("valRingSpeed");
-      const modDoubleGap = document.getElementById("modDoubleGap");
-      const modShrinkingRing = document.getElementById("modShrinkingRing");
-      const modSpeedEscalation = document.getElementById("modSpeedEscalation");
-      const modGrowSurvivor = document.getElementById("modGrowSurvivor");
-
-      const sliderBombTimer = document.getElementById("sliderBombTimer");
-      const valBombTimer = document.getElementById("valBombTimer");
-      const sliderBombChaos = document.getElementById("sliderBombChaos");
-      const valBombChaos = document.getElementById("valBombChaos");
-
-      const sliderBladeSpeed = document.getElementById("sliderBladeSpeed");
-      const valBladeSpeed = document.getElementById("valBladeSpeed");
-      const sliderBladeLen = document.getElementById("sliderBladeLen");
-      const valBladeLen = document.getElementById("valBladeLen");
-
-      const sliderLaserSpeed = document.getElementById("sliderLaserSpeed");
-      const valLaserSpeed = document.getElementById("valLaserSpeed");
-      const selectLaserCount = document.getElementById("selectLaserCount");
-
-      // Shared physics & viral inputs
-      const sliderSimSpeed = document.getElementById("sliderSimSpeed");
-      const valSimSpeed = document.getElementById("valSimSpeed");
-      const sliderGravity = document.getElementById("sliderGravity");
-      const valGravity = document.getElementById("valGravity");
-      const sliderLogoSize = document.getElementById("sliderLogoSize");
-      const valLogoSize = document.getElementById("valLogoSize");
-
-      const selectWinner = document.getElementById("selectWinner");
-      const selectTheme = document.getElementById("selectTheme");
-      const customTrophyInput = document.getElementById("customTrophyInput");
-      const btnResetTrophy = document.getElementById("btnResetTrophy");
-      const inputSubTitle = document.getElementById("inputSubTitle");
-      const inputMainTitle = document.getElementById("inputMainTitle");
-      const inputWatermark = document.getElementById("inputWatermark");
-      const inputViralHook = document.getElementById("inputViralHook");
-      const toggleViralHook = document.getElementById("toggleViralHook");
-      const toggleSlowMo = document.getElementById("toggleSlowMo");
-      const toggleAudio = document.getElementById("toggleAudio");
-
-      // Export controls
-      const selectFormat = document.getElementById("selectFormat");
