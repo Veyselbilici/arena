@@ -1,561 +1,643 @@
 "use strict";
-      const leagueLabels = {};
+      async function generateFullVideoWebCodecs(format, width, height, fps, videoCodec, audioCodec) {
+        const useAudio = config.audioEnabled && !!audioCodec;
+        const isMp4 = format === "mp4";
 
-      function applyLeaguePreset(presetKey, silent = false) {
-        config.preset = presetKey;
-        const builtin = (c) => !c.espnOnly;
-        const setSub = (t) => { config.subTitle = t; inputSubTitle.value = t; };
-        if (presetKey === "ucl36") {
-          allClubs.forEach((c) => (c.enabled = !!c.ucl));
-          setSub("UEFA CHAMPIONS LEAGUE");
-          setTheme("ucl", false);
-        } else if (["superlig", "premier", "laliga", "seriea", "bundesliga"].includes(presetKey)) {
-          allClubs.forEach((c) => (c.enabled = clubTags(c).includes(presetKey)));
-          setSub({ superlig: "TÜRKİYE SÜPER LİG", premier: "PREMIER LEAGUE", laliga: "LALIGA", seriea: "SERIE A", bundesliga: "BUNDESLIGA" }[presetKey]);
-          setTheme({ superlig: "superlig", premier: "premier", laliga: "laliga", seriea: "seriea", bundesliga: "bundesliga" }[presetKey], false);
-        } else if (presetKey === "worldcup") {
-          allClubs.forEach((c) => (c.enabled = clubTags(c).includes("national")));
-          setSub("WORLD CUP SURVIVAL");
-          setTheme("worldcup", false);
-        } else if (presetKey === "super50") {
-          const superSet = new Set([
-            "galatasaray", "fenerbahce", "besiktas", "trabzonspor", "basaksehir",
-            "man_city", "arsenal", "liverpool", "chelsea", "man_united", "tottenham", "newcastle", "aston_villa",
-            "real_madrid", "barcelona", "atletico", "bilbao", "sociedad", "villarreal", "betis", "sevilla",
-            "inter", "ac_milan", "juventus", "napoli", "roma", "lazio", "atalanta", "fiorentina",
-            "bayern", "dortmund", "leverkusen", "leipzig", "stuttgart", "frankfurt",
-            "psg", "marseille", "monaco", "lyon", "lille", "ajax", "psv", "feyenoord",
-            "benfica", "porto", "sporting", "celtic", "inter_miami", "al_nassr", "al_hilal"
-          ]);
-          allClubs.forEach((c) => (c.enabled = superSet.has(c.key)));
-          setSub("50 WORLD GIANTS ARENA");
-          setTheme("league", false);
-        } else if (presetKey === "mega") {
-          const live = allClubs.filter((c) => c.espnId || (c.tags || []).some((t) => leagueCache[t]) || c.custom);
-          (live.length >= 2 ? live : allClubs).forEach((c) => (c.enabled = true));
-          setSub(`MEGA CHAOS • ${selectedCount()} TEAMS`);
-        }
+        const muxer = isMp4
+          ? new Mp4Muxer.Muxer({
+              target: new Mp4Muxer.ArrayBufferTarget(),
+              video: { codec: "avc", width, height },
+              audio: useAudio ? { codec: "aac", numberOfChannels: 2, sampleRate: 48000 } : undefined,
+              fastStart: "in-memory"
+            })
+          : new WebMMuxer.Muxer({
+              target: new WebMMuxer.ArrayBufferTarget(),
+              video: { codec: videoCodec.startsWith("vp09") ? "V_VP9" : "V_VP8", width, height },
+              audio: useAudio ? { codec: "A_OPUS", numberOfChannels: 2, sampleRate: 48000 } : undefined
+            });
 
-        activeModalCategory = presetKey === "worldcup" ? "national" : (BUILTIN_CAT_LABELS[presetKey] ? presetKey : "selected");
-        preloadClubLogos(true);
-        if (!silent) {
-          renderCategoryBar();
-          renderClubModalGrid();
-          showToast(`Paket uygulandı: ${selectedCount()} takım seçildi.`, "success");
-        }
-      }
-
-      function getFilteredModalClubs() {
-        const q = localSearchTerm.trim().toLocaleLowerCase("tr");
-        return allClubs.filter((c) => {
-          let catOk = true;
-          if (activeModalCategory === "selected") catOk = c.enabled;
-          else if (activeModalCategory === "custom") catOk = !!c.custom;
-          else if (activeModalCategory !== "all") catOk = clubTags(c).includes(activeModalCategory);
-          if (!catOk) return false;
-          if (!q) return true;
-          return c.name.toLocaleLowerCase("tr").includes(q) || c.short.toLocaleLowerCase("tr").includes(q);
+        const bitrate = width >= 1080 ? (fps >= 60 ? 11_000_000 : 8_000_000) : 5_000_000;
+        const videoEncoder = new VideoEncoder({
+          output: (chunk, meta) => muxer.addVideoChunk(chunk, meta),
+          error: (e) => console.error("VideoEncoder hatası:", e)
         });
-      }
 
-      function renderCategoryBar() {
-        const cats = [["selected", `Seçili (${selectedCount()})`], ["all", "Tümü"]];
-        loadedLeagueOrder.forEach((slug) => cats.push([slug, leagueLabels[slug] || slug]));
+        const encCfg = { codec: videoCodec, width, height, bitrate, framerate: fps };
+        if (isMp4) encCfg.avc = { format: "avc" };
+        videoEncoder.configure(encCfg);
 
-        if (allClubs.some((c) => c.custom)) cats.push(["custom", "Özel"]);
-        categoryFilterBar.innerHTML = cats.map(([k, v]) =>
-          `<button type="button" data-cat="${k}" class="chip ${k === activeModalCategory ? "is-active" : ""}">${escapeHtml(v)}</button>`
-        ).join("");
-        const act = categoryFilterBar.querySelector(".is-active");
-        if (act) act.scrollIntoView({ block: "nearest", inline: "nearest" });
-      }
+        const offCanvas = document.createElement("canvas");
+        offCanvas.width = width;
+        offCanvas.height = height;
+        const offCtx = offCanvas.getContext("2d", { alpha: false });
 
-      function rebuildWinnerDropdown() {
-        const activeClubs = allClubs.filter((c) => c.enabled).sort((a, b) => a.name.localeCompare(b.name, "tr"));
-        navClubsSub.textContent = `${activeClubs.length} takım seçili`;
-        const prev = config.selectedWinnerKey;
-        selectWinner.innerHTML = `<option value="random">🎲 Rastgele (Doğal Fizik)</option>`;
-        activeClubs.forEach((club) => {
-          const opt = document.createElement("option");
-          opt.value = club.key;
-          opt.textContent = `🏆 ${club.name}`;
-          selectWinner.appendChild(opt);
-        });
-        if (prev !== "random" && activeClubs.some((c) => c.key === prev)) {
-          selectWinner.value = prev;
-        } else {
-          config.selectedWinnerKey = "random";
-          selectWinner.value = "random";
-        }
-      }
+        const renderCfg = { ...config };
+        const simState = createSimState(renderCfg);
+        const audioEvents = [];
 
-      function renderGridSkeleton() {
-        clubGrid.innerHTML = Array.from({ length: 12 }, () => `<div class="h-11 rounded-xl skeleton"></div>`).join("");
-      }
+        const dt = 1 / fps;
+        const frameDurationUs = Math.round(1_000_000 / fps);
+        const maxFrames = fps * 240;
+        let frameIdx = 0;
+        const wallStart = performance.now();
 
-      function updateSelectedCountUI() {
-        const n = selectedCount();
-        modalSelectedCount.textContent = `${n} seçili`;
-        modalSelectedCount.className = `text-[11px] font-extrabold px-2 py-1 rounded-lg border ${n >= 2 ? "text-sky-300 bg-sky-950/70 border-sky-700/50" : "text-rose-300 bg-rose-950/70 border-rose-700/50"}`;
-        const selChip = categoryFilterBar.querySelector('[data-cat="selected"]');
-        if (selChip) selChip.textContent = `Seçili (${n})`;
-      }
+        const emitAudio = (ev) => {
+          if (!useAudio) return;
+          audioEvents.push({ ...ev, theme: renderCfg.theme, mode: renderCfg.mode, time: frameIdx * dt });
+        };
 
-      function renderClubModalGrid() {
-        updateSelectedCountUI();
-        const visible = getFilteredModalClubs();
-        if (visible.length === 0) {
-          clubGrid.innerHTML = `<div class="col-span-full text-center py-8 text-xs text-slate-400">Burada takım yok. Yukarıdan bir lig seç ya da takım ara.</div>`;
-          return;
-        }
-        const frag = document.createDocumentFragment();
-        visible.forEach((club) => {
-          const btn = document.createElement("button");
-          btn.type = "button";
-          const paint = () => {
-            btn.className = `press flex items-center gap-2 px-2.5 py-2 min-h-[44px] rounded-xl border text-left cursor-pointer ${
-              club.enabled ? "bg-sky-950/60 border-sky-500/70 text-white" : "bg-slate-950/55 border-slate-800 text-slate-400"
-            }`;
-            btn.querySelector(".tick").textContent = club.enabled ? "✓" : "+";
-          };
-          const thumbHtml = club.logoUrl
-            ? `<img src="${club.logoUrl}" alt="" loading="lazy" class="w-7 h-7 object-contain shrink-0 ${club.isFlag ? "rounded-full object-cover" : ""}" onerror="this.style.visibility='hidden'" />`
-            : `<span class="w-6 h-6 rounded-full shrink-0" style="background:${club.c1};border:2px solid ${club.c2}"></span>`;
-          btn.innerHTML = `${thumbHtml}<span class="text-[11px] font-bold truncate flex-1">${escapeHtml(club.name)}</span><span class="tick text-xs font-black text-sky-400 w-3 text-center"></span>`;
-          paint();
-          btn.addEventListener("click", () => {
-            club.enabled = !club.enabled;
-            if (club.enabled) loadClubLogo(club);
-            paint();
-            updateSelectedCountUI();
+        while (!renderCancelRequested && frameIdx < maxFrames) {
+          stepSimState(simState, dt, renderCfg, emitAudio);
+          renderSimState(offCtx, simState, renderCfg, width, height);
+
+          const frame = new VideoFrame(offCanvas, {
+            timestamp: frameIdx * frameDurationUs,
+            duration: frameDurationUs
           });
-          frag.appendChild(btn);
-        });
-        clubGrid.innerHTML = "";
-        clubGrid.appendChild(frag);
-      }
+          videoEncoder.encode(frame, { keyFrame: frameIdx % (fps * 2) === 0 });
+          frame.close();
+          frameIdx++;
 
-      async function searchOnlineTeams() {
-        const q = onlineTeamQuery.value.trim();
-        if (q.length < 2) {
-          showToast("Aramak için en az 2 harf yaz.", "warn");
-          return;
-        }
-        btnOnlineSearch.disabled = true;
-        onlineSearchLabel.textContent = "...";
-        onlineSearchResults.classList.remove("hidden");
-        onlineSearchResults.innerHTML = Array.from({ length: 4 }, () => `<div class="h-14 rounded-xl skeleton"></div>`).join("");
+          if (frameIdx % 3 === 0 || videoEncoder.encodeQueueSize > 6) {
+            previewCtx.drawImage(offCanvas, 0, 0, BASE_W, BASE_H);
 
-        try {
-          const data = await fetchJson(`${ESPN_SEARCH}?query=${encodeURIComponent(q)}&limit=25&type=team`);
-          const seen = new Set();
-          const teams = (data.items || []).filter((t) => {
-            if (t.sport !== "soccer") return false;
-            if (/wchampions|\.w\.|women|nwsl|wwc|u1\d|u2\d/i.test(String(t.league || t.defaultLeagueSlug || "") + " " + (t.displayName || ""))) return false;
-            if (seen.has(t.id)) return false;
-            seen.add(t.id);
-            return true;
-          }).slice(0, 12);
+            const remaining = simState.badges.filter((b) => !b.eliminated).length;
+            const elimRatio = (simState.totalClubs - remaining) / Math.max(1, simState.totalClubs - 1);
+            const celebRatio = simState.winner ? Math.min(1, simState.winnerTime / 3.5) : 0;
+            const pct = Math.min(96, Math.round(elimRatio * 88 + celebRatio * 8));
+            const wallSec = Math.max(0.1, (performance.now() - wallStart) / 1000);
+            const speedX = (frameIdx * dt) / wallSec;
 
-          if (teams.length === 0) {
-            onlineSearchResults.innerHTML = `<div class="col-span-full text-center py-3 text-xs text-amber-300">"${escapeHtml(q)}" bulunamadı. İngilizce adını dene ya da aşağıdan logo linkiyle ekle.</div>`;
-            return;
+            renderProgressBar.style.width = `${pct}%`;
+            renderPercentText.textContent = `${pct}%`;
+            renderDurationText.textContent = fmtTime(frameIdx * dt);
+            renderClubsText.textContent = `${remaining} / ${simState.totalClubs}`;
+            renderSpeedText.textContent = `${speedX.toFixed(1)}x`;
+
+            while (videoEncoder.encodeQueueSize > 8 && !renderCancelRequested) {
+              await new Promise((r) => setTimeout(r, 4));
+            }
+            await new Promise((r) => setTimeout(r, 0));
           }
 
-          onlineSearchResults.innerHTML = "";
-          teams.forEach((t) => {
-            const logo = pickLogo(t.logos) || `https://a.espncdn.com/i/teamlogos/soccer/500/${t.id}.png`;
-            const nm = String(t.displayName || q).toUpperCase().slice(0, 22);
-            const lg = LEAGUE_META[t.league]?.label || t.league || "";
-            const already = allClubs.find((c) => (c.id === Number(t.id) || c.espnId === Number(t.id)) && c.enabled);
-            const card = document.createElement("div");
-            card.className = "flex items-center gap-2.5 p-2 rounded-xl bg-slate-950/90 border border-slate-700";
-            card.innerHTML = `
-              <img src="${logo}" alt="" class="w-9 h-9 object-contain shrink-0" onerror="this.style.visibility='hidden'" />
-              <div class="min-w-0 flex-1">
-                <div class="text-xs font-extrabold text-white truncate">${escapeHtml(nm)}</div>
-                <div class="text-[10px] text-slate-400 truncate">${escapeHtml(lg)}</div>
-              </div>
-              <button type="button" class="press px-3 py-2 rounded-lg text-[11px] font-black ${already ? "bg-slate-700 text-emerald-300" : "bg-emerald-600 hover:bg-emerald-500 text-white"} cursor-pointer shrink-0">${already ? "✓ Ekli" : "+ Ekle"}</button>`;
-            const addBtn = card.querySelector("button");
-            addBtn.addEventListener("click", () => {
-              const club = upsertEspnTeam({ ...t, logos: t.logos }, "custom");
-              club.custom = true;
-              club.enabled = true;
-              loadClubLogo(club);
-              renderCategoryBar();
-              renderClubModalGrid();
-              addBtn.textContent = "✓ Ekli";
-              addBtn.className = "press px-3 py-2 rounded-lg text-[11px] font-black bg-slate-700 text-emerald-300 shrink-0";
-              showToast(`${club.name} eklendi.`, "success");
-            });
-            onlineSearchResults.appendChild(card);
-          });
-        } catch (err) {
-          console.error(err);
-          onlineSearchResults.innerHTML = `<div class="col-span-full text-center py-3 text-xs text-rose-300">Aramaya ulaşılamadı. Bağlantını kontrol et ya da aşağıdan logo linkiyle ekle.</div>`;
-        } finally {
-          btnOnlineSearch.disabled = false;
-          onlineSearchLabel.textContent = "Ara";
+          if (simState.winner && simState.winnerTime >= 3.5) break;
         }
-      }
 
-      function openClubModal() {
-        renderCategoryBar();
-        renderClubModalGrid();
-        clubModal.classList.remove("hidden");
-        clubModal.classList.add("flex");
-        document.body.style.overflow = "hidden";
-      }
-      function closeClubModal() {
-        clubModal.classList.add("hidden");
-        clubModal.classList.remove("flex");
-        document.body.style.overflow = "";
-      }
-      /* =========================================================================
-         12. EVENT LISTENERS
-         ========================================================================= */
-      modeTabs.forEach((btn) => btn.addEventListener("click", () => switchMode(btn.dataset.mode)));
-
-      btnShareLink.addEventListener("click", () => {
-        const url = buildShareableURL();
-        const ok = copyTextReliable(url);
-        if (ok) {
-          showToast("Ayar linki kopyalandı! WhatsApp'tan arkadaşına yapıştırıp gönderebilirsin.", "success");
-        } else {
-          showToast("Link oluşturuldu: " + url, "info");
+        if (renderCancelRequested) {
+          try { videoEncoder.close(); } catch (_) {}
+          return null;
         }
-      });
 
-      btnGenerateDownload.addEventListener("click", handleGenerateFullVideo);
-      btnCancelRender.addEventListener("click", () => {
-        renderCancelRequested = true;
-        renderStageTitle.textContent = "İptal ediliyor...";
-      });
-      btnRedownload.addEventListener("click", () => {
-        if (!lastReadyUrl) return;
-        const a = document.createElement("a");
-        a.href = lastReadyUrl;
-        a.download = lastReadyFilename;
-        document.body.appendChild(a);
-        a.click();
-        a.remove();
-      });
+        renderStageTitle.textContent = useAudio ? "Ses Efektleri Ekleniyor..." : "Video Paketleniyor...";
+        renderProgressBar.style.width = "97%";
+        renderPercentText.textContent = "97%";
+        await new Promise((r) => setTimeout(r, 10));
 
-      btnPreviewToggle.addEventListener("click", () => {
+        await videoEncoder.flush();
+        videoEncoder.close();
+
+        const totalSec = frameIdx * dt;
+        if (useAudio) {
+          try {
+            await synthesizeAndEncodeAudio(audioEvents, totalSec, audioCodec, muxer);
+          } catch (err) {
+            console.warn("Ses kodlama atlandı:", err);
+          }
+        }
+
+        if (renderCancelRequested) return null;
+
+        renderStageTitle.textContent = "Dosya Hazırlanıyor...";
+        renderProgressBar.style.width = "100%";
+        renderPercentText.textContent = "100%";
+        muxer.finalize();
+
+        const { buffer } = muxer.target;
+        return {
+          blob: new Blob([buffer], { type: isMp4 ? "video/mp4" : "video/webm" }),
+          ext: format,
+          winnerName: simState.winner ? simState.winner.club.name : "arena",
+          totalSec
+        };
+      }
+
+      async function generateFullVideoMediaRecorder(requestedFormat, width, height, fps) {
+        const candidates = requestedFormat === "mp4"
+          ? [
+              { mime: "video/mp4;codecs=avc1", ext: "mp4" },
+              { mime: "video/mp4", ext: "mp4" },
+              { mime: "video/webm;codecs=vp9,opus", ext: "webm" },
+              { mime: "video/webm", ext: "webm" }
+            ]
+          : [
+              { mime: "video/webm;codecs=vp9,opus", ext: "webm" },
+              { mime: "video/webm", ext: "webm" }
+            ];
+
+        let chosen = { mime: "", ext: "webm" };
+        for (const c of candidates) {
+          if (MediaRecorder.isTypeSupported(c.mime)) { chosen = c; break; }
+        }
+
+        const offCanvas = document.createElement("canvas");
+        offCanvas.width = width;
+        offCanvas.height = height;
+        const offCtx = offCanvas.getContext("2d", { alpha: false });
+
+        const stream = offCanvas.captureStream(fps);
+        const chunks = [];
+        const recorder = new MediaRecorder(stream, { mimeType: chosen.mime || undefined, videoBitsPerSecond: 7_500_000 });
+        const stopPromise = new Promise((resolve) => {
+          recorder.ondataavailable = (e) => { if (e.data && e.data.size > 0) chunks.push(e.data); };
+          recorder.onstop = () => resolve(new Blob(chunks, { type: chosen.mime || "video/webm" }));
+        });
+
+        const renderCfg = { ...config };
+        const simState = createSimState(renderCfg);
+        const dt = 1 / fps;
+        let elapsed = 0;
+
+        recorder.start(250);
+        while (!renderCancelRequested && elapsed < 240) {
+          stepSimState(simState, dt, renderCfg, () => {});
+          renderSimState(offCtx, simState, renderCfg, width, height);
+          previewCtx.drawImage(offCanvas, 0, 0, BASE_W, BASE_H);
+          elapsed += dt;
+
+          const remaining = simState.badges.filter((b) => !b.eliminated).length;
+          const pct = Math.min(98, Math.round(((simState.totalClubs - remaining) / Math.max(1, simState.totalClubs - 1)) * 92));
+          renderProgressBar.style.width = `${pct}%`;
+          renderPercentText.textContent = `${pct}%`;
+          renderDurationText.textContent = fmtTime(elapsed);
+          renderClubsText.textContent = `${remaining} / ${simState.totalClubs}`;
+          renderSpeedText.textContent = "1.0x";
+
+          if (simState.winner && simState.winnerTime >= 3.5) break;
+          await new Promise((r) => setTimeout(r, Math.round(1000 / fps)));
+        }
+
+        recorder.stop();
+        const blob = await stopPromise;
+        if (renderCancelRequested) return null;
+        return {
+          blob,
+          ext: chosen.ext,
+          winnerName: simState.winner ? simState.winner.club.name : "arena",
+          totalSec: elapsed
+        };
+      }
+
+      async function handleGenerateFullVideo() {
         if (isRendering) return;
-        initLiveAudio();
-        if (previewState && previewState.winner) resetPreview();
-        previewRunning = !previewRunning;
-        updatePreviewButtonsUI();
-      });
-      btnPreviewReset.addEventListener("click", () => {
-        if (isRendering) return;
+        const activeCount = allClubs.filter((c) => c.enabled).length;
+        if (activeCount < 2) {
+          showToast("En az 2 aktif kulüp seçili olmalıdır.", "warn");
+          return;
+        }
+
         previewRunning = false;
         updatePreviewButtonsUI();
-        resetPreview();
-      });
 
-      // Modal
-      btnNavClubs.addEventListener("click", openClubModal);
-      btnCloseClubModal.addEventListener("click", () => btnApplyClubs.click());
-      clubModal.addEventListener("click", (e) => { if (e.target === clubModal) btnApplyClubs.click(); });
-      document.addEventListener("keydown", (e) => { if (e.key === "Escape" && !clubModal.classList.contains("hidden")) btnApplyClubs.click(); });
+        isRendering = true;
+        renderCancelRequested = false;
+        btnGenerateDownload.disabled = true;
+        generateBtnLabel.textContent = "Tam Video Oluşturuluyor...";
 
-      presetBtns.forEach((btn) => {
-        btn.addEventListener("click", () => applyLeaguePreset(btn.dataset.preset));
-      });
+        const { width, height, fps } = parseQuality(config.quality);
+        const format = config.format;
 
-      btnLeagueOnly.addEventListener("click", () => applyEspnLeague(leagueSelect.value, "only"));
-      leagueSelect.addEventListener("change", () => applyEspnLeague(leagueSelect.value, "only"));
-      document.querySelectorAll(".league-chip").forEach((btn) => btn.addEventListener("click", () => {
-        leagueSelect.value = btn.dataset.league;
-        applyEspnLeague(btn.dataset.league, "only");
-        document.getElementById("modalScroll").scrollTo({ top: categoryFilterBar.closest("div.border-b").offsetTop - 8, behavior: "smooth" });
-      }));
-      btnLeagueAdd.addEventListener("click", () => applyEspnLeague(leagueSelect.value, "add"));
-      btnLoadAllLeagues.addEventListener("click", loadAllLeagueNames);
+        renderStageTitle.textContent = `Tam Video Oluşturuluyor (.${format.toUpperCase()})...`;
+        renderProgressBar.style.width = "0%";
+        renderPercentText.textContent = "0%";
+        renderDurationText.textContent = "00:00";
+        renderClubsText.textContent = `${activeCount} / ${activeCount}`;
+        renderSpeedText.textContent = "...";
+        renderOverlay.classList.remove("hidden");
+        renderOverlay.classList.add("flex");
 
-      categoryFilterBar.addEventListener("click", (e) => {
-        const btn = e.target.closest("[data-cat]");
-        if (!btn) return;
-        activeModalCategory = btn.dataset.cat;
-        renderCategoryBar();
-        renderClubModalGrid();
-      });
+        try {
+          const bitrate = width >= 1080 ? (fps >= 60 ? 11_000_000 : 8_000_000) : 5_000_000;
+          const videoCodec = await findSupportedVideoCodec(format, width, height, fps, bitrate);
+          const audioCodec = await findSupportedAudioCodec(format);
+          const muxerOk = format === "mp4" ? typeof Mp4Muxer !== "undefined" : typeof WebMMuxer !== "undefined";
 
-      localTeamSearch.addEventListener("input", (e) => {
-        localSearchTerm = e.target.value;
-        renderClubModalGrid();
-      });
+          let result = null;
+          if (videoCodec && muxerOk) {
+            result = await generateFullVideoWebCodecs(format, width, height, fps, videoCodec, audioCodec);
+          } else if (typeof MediaRecorder !== "undefined") {
+            showToast("Tarayıcı yedek video motoru kullanılıyor...", "info");
+            result = await generateFullVideoMediaRecorder(format, width, height, fps);
+          } else {
+            throw new Error("Tarayıcınız video dışa aktarmayı desteklemiyor.");
+          }
 
-      btnSelectAllVisible.addEventListener("click", () => {
-        getFilteredModalClubs().forEach((c) => { c.enabled = true; loadClubLogo(c); });
-        renderClubModalGrid();
-      });
-      btnDeselectVisible.addEventListener("click", () => {
-        getFilteredModalClubs().forEach((c) => (c.enabled = false));
-        renderClubModalGrid();
-      });
-      btnOnlySelected.addEventListener("click", () => {
-        activeModalCategory = "selected";
-        renderCategoryBar();
-        renderClubModalGrid();
-      });
-      btnClearAllClubs.addEventListener("click", () => {
-        allClubs.forEach((c) => (c.enabled = false));
-        renderClubModalGrid();
-        showToast("Tüm seçim temizlendi. En az 2 takım seç.", "info");
-      });
+          if (result && !renderCancelRequested) {
+            triggerBlobDownload(result.blob, result.ext, result.winnerName, result.totalSec);
+          } else if (renderCancelRequested) {
+            showToast("Video oluşturma iptal edildi.", "warn");
+          }
+        } catch (err) {
+          console.error(err);
+          showToast("Video oluşturulurken hata oluştu: " + (err.message || err), "error");
+        } finally {
+          isRendering = false;
+          renderCancelRequested = false;
+          btnGenerateDownload.disabled = false;
+          generateBtnLabel.textContent = "Tam Videoyu Oluştur ve İndir";
+          renderOverlay.classList.add("hidden");
+          renderOverlay.classList.remove("flex");
+          if (previewState) renderSimState(previewCtx, previewState, config, BASE_W, BASE_H);
+        }
+      }
 
-      btnRandom36.addEventListener("click", () => {
-        const pool = getFilteredModalClubs().length >= 36 ? getFilteredModalClubs() : allClubs;
-        const picked = new Set([...pool].sort(() => Math.random() - 0.5).slice(0, 36).map((c) => c.key));
-        allClubs.forEach((c) => {
-          c.enabled = picked.has(c.key);
-          if (c.enabled) loadClubLogo(c);
+      /* =========================================================================
+         10. MOD GEÇİŞİ, URL PAYLAŞIM LİNKİ & ÖNİZLEME DÖNGÜSÜ
+         ========================================================================= */
+      const MODE_META = {
+        ring:  { title: "🌀 Klasik Halka — Viral Mod Ayarları",  badge: "Dönen Boşluk Fiziği",    panel: panelModeRing },
+        bomb:  { title: "💣 Saatli Bomba — Hot Potato Ayarları", badge: "Dokun & Devret",          panel: panelModeBomb },
+        blade: { title: "⚔️ Kılıç Savaşı — Düello Ayarları",     badge: "3 Can • Enerji Kılıcı",   panel: panelModeBlade },
+        laser: { title: "⚡ Ölüm Lazeri — Hayatta Kalma",        badge: "2 Can • Dönen Lazer",     panel: panelModeLaser },
+        match: { title: "🥅 Maç Modu — Gerçek Maç Canlandırma",  badge: "Skorbord • Gol • Kale",   panel: panelModeMatch }
+      };
+
+      function setTheme(key, updateSub = true) {
+        if (!THEMES[key]) return;
+        config.theme = key;
+        selectTheme.value = key;
+        if (updateSub) {
+          config.subTitle = THEMES[key].subDefault;
+          inputSubTitle.value = config.subTitle;
+          config.leagueSlug = THEMES[key].leagueSlug;
+        }
+        getLeagueLogo(config.leagueSlug || THEMES[key].leagueSlug);
+        updateTrophyButtons();
+      }
+
+      function switchMode(newMode) {
+        if (!MODE_META[newMode]) return;
+        config.mode = newMode;
+
+        modeTabs.forEach((btn) => {
+          const active = btn.dataset.mode === newMode;
+          btn.classList.toggle("mode-tab-active", active);
+          if (!active) btn.classList.add("text-slate-300");
+          else btn.classList.remove("text-slate-300");
         });
-        renderClubModalGrid();
-        showToast(`Rastgele ${picked.size} takım seçildi.`, "success");
-      });
 
-      btnOnlineSearch.addEventListener("click", searchOnlineTeams);
-      onlineTeamQuery.addEventListener("keydown", (e) => {
-        if (e.key === "Enter") {
-          e.preventDefault();
-          searchOnlineTeams();
-        }
-      });
+        [panelModeRing, panelModeBomb, panelModeBlade, panelModeLaser, panelModeMatch].forEach((p) => p.classList.add("hidden"));
+        MODE_META[newMode].panel.classList.remove("hidden");
+        modePanelTitle.textContent = MODE_META[newMode].title;
+        modePanelBadge.textContent = MODE_META[newMode].badge;
 
-      btnAddManualTeam.addEventListener("click", () => {
-        const name = manualTeamName.value.trim().toUpperCase();
-        const url = manualTeamUrl.value.trim();
-        if (!name) {
-          showToast("Lütfen manuel eklenecek takımın adını yazın.", "warn");
-          return;
-        }
-        const newClub = {
-          key: "manual_" + Date.now() + "_" + Math.floor(Math.random() * 999),
-          id: null,
-          cat: "custom",
-          name: name.slice(0, 22),
-          short: name.replace(/[^A-Z0-9]/g, "").slice(0, 3) || "CLB",
-          c1: "#38bdf8",
-          c2: "#1e3a8a",
-          enabled: true,
-          custom: true,
-          isFlag: false,
-          logoUrl: url || "",
-          sprite: null,
-          realLoaded: false,
-          loadingStarted: false
-        };
-        newClub.sprite = createFallbackCrest(newClub);
-        allClubs.unshift(newClub);
-        if (url) loadClubLogo(newClub);
-        manualTeamName.value = "";
-        manualTeamUrl.value = "";
-        renderClubModalGrid();
-        rebuildWinnerDropdown();
-        showToast(`${newClub.name} eklendi!`, "success");
-      });
-
-      btnApplyClubs.addEventListener("click", () => {
-        if (selectedCount() < 2) {
-          showToast("Arenaya göndermek için en az 2 takım seç.", "warn");
-          return;
-        }
-        closeClubModal();
-        preloadClubLogos(true);
-        rebuildWinnerDropdown();
         if (!isRendering) {
           previewRunning = false;
           updatePreviewButtonsUI();
           resetPreview();
         }
-      });
+      }
 
-      modalCustomLogoInput.addEventListener("change", (e) => {
-        const files = Array.from(e.target.files || []);
-        files.forEach((file) => {
-          const reader = new FileReader();
-          reader.onload = (ev) => {
-            const img = new Image();
-            img.onload = () => {
-              const rawName = file.name.replace(/\.[^.]+$/, "").toUpperCase().slice(0, 20) || "CUSTOM CLUB";
-              allClubs.unshift({
-                key: "custom_" + Date.now() + "_" + Math.floor(Math.random() * 1000),
-                id: null,
-                cat: "custom",
-                name: rawName,
-                short: rawName.slice(0, 3),
-                c1: "#38bdf8", c2: "#1e3a8a",
-                enabled: true, custom: true, realLoaded: true, loadingStarted: true,
-                logoUrl: ev.target.result,
-                sprite: createImageSprite(img)
-              });
-              updateLogoStatusUI();
-              renderClubModalGrid();
-              rebuildWinnerDropdown();
-              showToast(`${rawName} eklendi!`, "success");
-            };
-            img.src = ev.target.result;
-          };
-          reader.readAsDataURL(file);
-        });
-        modalCustomLogoInput.value = "";
-      });
-
-      // Özel Kupa Yükleme
-      // Lige özel kupa: yüklenen görsel küçültülüp o tema için tarayıcıda saklanır
-      function storeTrophy(themeKey, dataUrl) {
-        try { localStorage.setItem("arena_trophy_" + themeKey, dataUrl); } catch (_) {
-          showToast("Kupa bu oturumda kullanılacak (tarayıcı kaydı dolu).", "warn");
+      function buildShareableURL() {
+        const params = new URLSearchParams();
+        params.set("m", config.mode);
+        params.set("t", config.theme);
+        params.set("pr", config.preset || "ucl36");
+        params.set("w", config.selectedWinnerKey);
+        params.set("sp", config.simSpeed.toFixed(2));
+        params.set("sl", config.slowMoFinale ? "1" : "0");
+        params.set("sub", config.subTitle);
+        params.set("main", config.mainTitle);
+        if (config.watermark) params.set("wm", config.watermark);
+        params.set("hk", config.viralHook);
+        params.set("hkon", config.showViralHook ? "1" : "0");
+        if (config.mode === "ring") {
+          params.set("gap", String(config.gapDegrees));
+          params.set("dg", config.doubleGap ? "1" : "0");
+          params.set("sr", config.shrinkingRing ? "1" : "0");
         }
+        const base = window.location.origin + window.location.pathname;
+        return `${base}?${params.toString()}`;
       }
-      function restoreTrophies() {
-        Object.keys(THEMES).forEach((k) => {
-          let url = null;
-          try { url = localStorage.getItem("arena_trophy_" + k); } catch (_) {}
-          if (!url) return;
-          const img = new Image();
-          img.onload = () => { customTrophies[k] = img; updateTrophyButtons(); };
-          img.src = url;
-        });
+
+      function applyURLParamsOnLoad() {
+        try {
+          const p = new URLSearchParams(window.location.search);
+          if (!p.toString()) return;
+          const pr = p.get("pr");
+          if (pr && pr.startsWith("espn:")) pendingLeague = pr.slice(5);
+          else if (pr) { applyLeaguePreset(pr, true); pendingLeague = null; }
+          if (p.get("m") && MODE_META[p.get("m")]) config.mode = p.get("m");
+          if (p.get("t") && THEMES[p.get("t")]) {
+            config.theme = p.get("t");
+            selectTheme.value = config.theme;
+          }
+          if (p.get("w")) config.selectedWinnerKey = p.get("w");
+          if (p.get("sp")) {
+            config.simSpeed = Math.max(0.6, Math.min(2.0, parseFloat(p.get("sp")) || 1.0));
+            sliderSimSpeed.value = config.simSpeed;
+            valSimSpeed.textContent = `${config.simSpeed.toFixed(2)}x`;
+          }
+          if (p.get("sl")) {
+            config.slowMoFinale = p.get("sl") === "1";
+            toggleSlowMo.checked = config.slowMoFinale;
+          }
+          if (p.get("sub")) { config.subTitle = p.get("sub"); inputSubTitle.value = config.subTitle; }
+          if (p.get("main")) { config.mainTitle = p.get("main"); inputMainTitle.value = config.mainTitle; }
+          if (p.get("wm")) { config.watermark = p.get("wm"); inputWatermark.value = config.watermark; }
+          if (p.get("hk")) { config.viralHook = p.get("hk"); inputViralHook.value = config.viralHook; }
+          if (p.get("hkon")) {
+            config.showViralHook = p.get("hkon") === "1";
+            toggleViralHook.checked = config.showViralHook;
+          }
+          if (p.get("gap")) {
+            config.gapDegrees = Math.max(16, Math.min(60, parseInt(p.get("gap"), 10) || 24));
+            sliderGap.value = config.gapDegrees;
+            valGap.textContent = `${config.gapDegrees}°`;
+          }
+          if (p.get("dg")) { config.doubleGap = p.get("dg") === "1"; modDoubleGap.checked = config.doubleGap; }
+          if (p.get("sr")) { config.shrinkingRing = p.get("sr") === "1"; modShrinkingRing.checked = config.shrinkingRing; }
+        } catch (_) {}
       }
-      function updateTrophyButtons() {
-        btnResetTrophy.classList.toggle("hidden", !customTrophies[config.theme]);
-        trophyThemeLabel.textContent = (THEMES[config.theme] || {}).name || "";
+
+      function resetPreview() {
+        previewState = createSimState(config);
+        updatePreviewStatsUI();
+        renderSimState(previewCtx, previewState, config, BASE_W, BASE_H);
       }
-      customTrophyInput.addEventListener("change", (e) => {
-        const file = e.target.files && e.target.files[0];
-        if (!file) return;
-        const themeKey = config.theme;
-        const reader = new FileReader();
-        reader.onload = (ev) => {
-          const src = new Image();
-          src.onload = () => {
-            const max = 640;
-            const sc = Math.min(1, max / Math.max(src.naturalWidth, src.naturalHeight));
-            const cv = document.createElement("canvas");
-            cv.width = Math.round(src.naturalWidth * sc);
-            cv.height = Math.round(src.naturalHeight * sc);
-            cv.getContext("2d").drawImage(src, 0, 0, cv.width, cv.height);
-            const url = cv.toDataURL("image/png");
-            const img = new Image();
-            img.onload = () => {
-              customTrophies[themeKey] = img;
-              storeTrophy(themeKey, url);
-              updateTrophyButtons();
-              showToast(`Kupa kaydedildi: ${THEMES[themeKey].name}`, "success");
-            };
-            img.src = url;
-          };
-          src.src = ev.target.result;
-        };
-        reader.readAsDataURL(file);
-        customTrophyInput.value = "";
-      });
-      btnResetTrophy.addEventListener("click", () => {
-        delete customTrophies[config.theme];
-        try { localStorage.removeItem("arena_trophy_" + config.theme); } catch (_) {}
-        updateTrophyButtons();
-        showToast("Bu lig için tasarım kupaya dönüldü.", "info");
-      });
 
-      // Mod & Fizik Inputları
-      sliderGap.addEventListener("input", (e) => { config.gapDegrees = parseInt(e.target.value, 10); valGap.textContent = `${config.gapDegrees}°`; });
-      sliderRingSpeed.addEventListener("input", (e) => { config.ringSpeed = parseFloat(e.target.value); valRingSpeed.textContent = `${config.ringSpeed.toFixed(2)}x`; });
-      modDoubleGap.addEventListener("change", (e) => (config.doubleGap = e.target.checked));
-      modShrinkingRing.addEventListener("change", (e) => (config.shrinkingRing = e.target.checked));
-      modSpeedEscalation.addEventListener("change", (e) => (config.speedEscalation = e.target.checked));
-      modGrowSurvivor.addEventListener("change", (e) => (config.growSurvivor = e.target.checked));
+      function updatePreviewButtonsUI() {
+        previewIcon.textContent = previewRunning ? "⏸" : "▶";
+        mbPlay.textContent = previewRunning ? "⏸" : "▶";
+        previewLabel.textContent = previewRunning ? "Önizlemeyi Duraklat" : "Önizlemeyi Başlat";
+      }
 
-      sliderBombTimer.addEventListener("input", (e) => { config.bombTimer = parseFloat(e.target.value); valBombTimer.textContent = `${config.bombTimer.toFixed(1)} sn`; });
-      sliderBombChaos.addEventListener("input", (e) => { config.bombChaos = parseFloat(e.target.value); valBombChaos.textContent = `${config.bombChaos.toFixed(2)}x`; });
+      function updatePreviewStatsUI() {
+        if (!previewState) return;
+        const rem = previewState.badges.filter((b) => !b.eliminated).length;
+        previewElapsedEl.textContent = fmtTime(previewState.simTime);
+        previewRemainingEl.textContent = previewState.mode === "match"
+          ? `${previewState.score.home} - ${previewState.score.away}`
+          : `${rem} / ${previewState.totalClubs}`;
+      }
 
-      sliderBladeSpeed.addEventListener("input", (e) => { config.bladeSpeed = parseFloat(e.target.value); valBladeSpeed.textContent = `${config.bladeSpeed.toFixed(2)}x`; });
-      sliderBladeLen.addEventListener("input", (e) => { config.bladeLength = parseInt(e.target.value, 10); valBladeLen.textContent = `${config.bladeLength} px`; });
+      let lastTs = 0;
+      let physAccum = 0;
+      const FIXED_DT = 1 / 60;
 
-      sliderLaserSpeed.addEventListener("input", (e) => { config.laserSpeed = parseFloat(e.target.value); valLaserSpeed.textContent = `${config.laserSpeed.toFixed(2)}x`; });
-      selectLaserCount.addEventListener("change", (e) => (config.laserCount = parseInt(e.target.value, 10)));
+      function previewLoop(ts) {
+        if (!lastTs) lastTs = ts;
+        const dt = Math.min((ts - lastTs) / 1000, 0.05);
+        lastTs = ts;
 
-      sliderSimSpeed.addEventListener("input", (e) => { config.simSpeed = parseFloat(e.target.value); valSimSpeed.textContent = `${config.simSpeed.toFixed(2)}x`; });
-      sliderGravity.addEventListener("input", (e) => { config.gravityScale = parseFloat(e.target.value); valGravity.textContent = `${config.gravityScale.toFixed(2)}x`; });
-      const spinLabel = (v) => (v <= 0.001 ? "Kapalı" : v < 0.45 ? "Yavaş" : v < 0.9 ? "Orta" : "Hızlı") + ` (${v.toFixed(2)}x)`;
-      valSpin.textContent = spinLabel(config.spinSpeed);
-      sliderSpin.addEventListener("input", (e) => {
-        config.spinSpeed = parseFloat(e.target.value);
-        valSpin.textContent = spinLabel(config.spinSpeed);
-      });
-      toggleLeagueLogo.addEventListener("change", (e) => (config.showLeagueLogo = e.target.checked));
-      selectDuration.addEventListener("change", (e) => (config.targetDuration = parseInt(e.target.value, 10) || 0));
-
-      sliderLogoSize.addEventListener("input", (e) => {
-        config.logoRadius = parseInt(e.target.value, 10);
-        valLogoSize.textContent = `${config.logoRadius} px`;
-        if (previewState) { const rr = computeBadgeRadius(config.logoRadius, previewState.totalClubs); previewState.badges.forEach((b) => (b.r = rr)); }
-      });
-
-      selectWinner.addEventListener("change", (e) => {
-        config.selectedWinnerKey = e.target.value;
-        if (previewState) previewState.selectedWinnerKey = config.selectedWinnerKey;
-      });
-
-      // Tema listesinden lig seçilince o ligin güncel takımları da otomatik gelir
-      selectTheme.addEventListener("change", (e) => {
-        const key = e.target.value;
-        setTheme(key, true);
-        const slug = THEMES[key] && THEMES[key].leagueSlug;
-        if (slug) {
-          if ([...leagueSelect.options].some((o) => o.value === slug)) leagueSelect.value = slug;
-          showToast(`${THEMES[key].name}: güncel takımlar yükleniyor...`, "info");
-          applyEspnLeague(slug, "only").then(() => {
-            if (leagueCache[slug]) showToast(`${THEMES[key].name}: ${selectedCount()} takım arenada.`, "success");
-            else showToast("Lig yüklenemedi, bağlantını kontrol et. Tema yine de uygulandı.", "warn");
-          });
+        if (!isRendering) {
+          if (previewRunning && previewState) {
+            physAccum += dt;
+            while (physAccum >= FIXED_DT) {
+              stepSimState(previewState, FIXED_DT, config, playLiveSound);
+              physAccum -= FIXED_DT;
+            }
+            updatePreviewStatsUI();
+          }
+          if (previewState) renderSimState(previewCtx, previewState, config, BASE_W, BASE_H);
         }
-      });
-
-      inputSubTitle.addEventListener("input", (e) => (config.subTitle = e.target.value));
-      inputMainTitle.addEventListener("input", (e) => (config.mainTitle = e.target.value));
-      inputWatermark.addEventListener("input", (e) => (config.watermark = e.target.value));
-      inputViralHook.addEventListener("input", (e) => (config.viralHook = e.target.value));
-      toggleViralHook.addEventListener("change", (e) => (config.showViralHook = e.target.checked));
-      toggleSlowMo.addEventListener("change", (e) => (config.slowMoFinale = e.target.checked));
-      toggleAudio.addEventListener("change", (e) => {
-        config.audioEnabled = e.target.checked;
-        if (config.audioEnabled) initLiveAudio();
-      });
-
-      selectFormat.addEventListener("change", (e) => (config.format = e.target.value));
-      selectQuality.addEventListener("change", (e) => (config.quality = e.target.value));
+        requestAnimationFrame(previewLoop);
+      }
 
       /* =========================================================================
-         13. BAŞLANGIÇ
+         11. KULÜP YÖNETİMİ, CANLI LİG SEÇİCİ (ESPN) & TAKIM ARAMA
          ========================================================================= */
-      let pendingLeague = "uefa.champions"; // açılışta güncel Şampiyonlar Ligi kadrosu canlı yüklenir
+      const ESPN_CORE = "https://sports.core.api.espn.com/v2/sports/soccer/leagues";
+      const ESPN_SEARCH = "https://site.web.api.espn.com/apis/common/v3/search";
 
-      // Mobil alt çubuk
-      mbPlay.addEventListener("click", () => btnPreviewToggle.click());
-      mbReset.addEventListener("click", () => btnPreviewReset.click());
-      mbGenerate.addEventListener("click", () => btnGenerateDownload.click());
+      // Seçilebilir ligler & turnuvalar (slug, görünen ad, video üst başlığı, otomatik tema)
+      const LEAGUE_CATALOG = [
+        { group: "UEFA Kupaları", items: [
+          ["uefa.champions", "UEFA Şampiyonlar Ligi", "UEFA CHAMPIONS LEAGUE", "ucl"],
+          ["uefa.europa", "UEFA Avrupa Ligi", "UEFA EUROPA LEAGUE", "europa"],
+          ["uefa.europa.conf", "UEFA Konferans Ligi", "UEFA CONFERENCE LEAGUE", "conference"],
+          ["uefa.champions_qual", "Şampiyonlar Ligi Elemeleri", "CHAMPIONS LEAGUE QUALIFYING", "ucl"],
+          ["uefa.europa_qual", "Avrupa Ligi Elemeleri", "EUROPA LEAGUE QUALIFYING", "europa"],
+          ["uefa.europa.conf_qual", "Konferans Ligi Elemeleri", "CONFERENCE LEAGUE QUALIFYING", "conference"],
+          ["uefa.super_cup", "UEFA Süper Kupa", "UEFA SUPER CUP", "ucl"]
+        ]},
+        { group: "Türkiye", items: [
+          ["tur.1", "Trendyol Süper Lig", "TÜRKİYE SÜPER LİG", "superlig"]
+        ]},
+        { group: "Avrupa Ligleri", items: [
+          ["eng.1", "İngiltere Premier League", "PREMIER LEAGUE", "premier"],
+          ["esp.1", "İspanya LaLiga", "LALIGA", "laliga"],
+          ["ita.1", "İtalya Serie A", "SERIE A", "seriea"],
+          ["ger.1", "Almanya Bundesliga", "BUNDESLIGA", "bundesliga"],
+          ["fra.1", "Fransa Ligue 1", "LIGUE 1", "ligue1"],
+          ["ned.1", "Hollanda Eredivisie", "EREDIVISIE", "eredivisie"],
+          ["por.1", "Portekiz Liga Portugal", "LIGA PORTUGAL", "liga_pt"],
+          ["bel.1", "Belçika Pro League", "BELGIAN PRO LEAGUE", "league"],
+          ["sco.1", "İskoçya Premiership", "SCOTTISH PREMIERSHIP", "league"],
+          ["gre.1", "Yunanistan Super League", "GREEK SUPER LEAGUE", "league"],
+          ["aut.1", "Avusturya Bundesliga", "AUSTRIAN BUNDESLIGA", "league"],
+          ["sui.1", "İsviçre Super League", "SWISS SUPER LEAGUE", "league"],
+          ["den.1", "Danimarka Superliga", "DANISH SUPERLIGA", "league"],
+          ["nor.1", "Norveç Eliteserien", "ELITESERIEN", "league"],
+          ["swe.1", "İsveç Allsvenskan", "ALLSVENSKAN", "league"],
+          ["rou.1", "Romanya Superliga", "ROMANIAN SUPERLIGA", "league"],
+          ["isr.1", "İsrail Premier League", "ISRAELI PREMIER LEAGUE", "league"],
+          ["cyp.1", "Kıbrıs 1. Lig", "CYPRUS FIRST DIVISION", "league"],
+          ["rus.1", "Rusya Premier Lig", "RUSSIAN PREMIER LEAGUE", "league"],
+          ["eng.2", "İngiltere Championship", "EFL CHAMPIONSHIP", "league"],
+          ["esp.2", "İspanya LaLiga 2", "LALIGA 2", "league"],
+          ["ita.2", "İtalya Serie B", "SERIE B", "league"],
+          ["ger.2", "Almanya 2. Bundesliga", "2. BUNDESLIGA", "league"],
+          ["fra.2", "Fransa Ligue 2", "LIGUE 2", "league"]
+        ]},
+        { group: "Yerel Kupalar", items: [
+          ["eng.fa", "İngiltere FA Cup", "FA CUP", "league"],
+          ["eng.league_cup", "İngiltere Lig Kupası", "CARABAO CUP", "league"],
+          ["esp.copa_del_rey", "İspanya Kral Kupası", "COPA DEL REY", "league"],
+          ["ita.coppa_italia", "İtalya Kupası", "COPPA ITALIA", "league"],
+          ["ger.dfb_pokal", "Almanya Kupası", "DFB-POKAL", "league"],
+          ["fra.coupe_de_france", "Fransa Kupası", "COUPE DE FRANCE", "league"]
+        ]},
+        { group: "Milli Takımlar", items: [
+          ["fifa.world", "FIFA Dünya Kupası", "FIFA WORLD CUP", "worldcup"],
+          ["uefa.euro", "UEFA EURO", "UEFA EURO", "worldcup"],
+          ["uefa.nations", "UEFA Uluslar Ligi", "UEFA NATIONS LEAGUE", "worldcup"],
+          ["uefa.euroq", "EURO Elemeleri", "EURO QUALIFIERS", "worldcup"],
+          ["fifa.worldq.uefa", "Dünya Kupası Elemeleri (Avrupa)", "WORLD CUP QUALIFIERS", "worldcup"],
+          ["conmebol.america", "Copa América", "COPA AMÉRICA", "worldcup"]
+        ]},
+        { group: "Dünya Kulüpleri", items: [
+          ["fifa.cwc", "FIFA Kulüpler Dünya Kupası", "FIFA CLUB WORLD CUP", "worldcup"],
+          ["conmebol.libertadores", "Copa Libertadores", "COPA LIBERTADORES", "league"],
+          ["ksa.1", "Suudi Arabistan Pro Lig", "SAUDI PRO LEAGUE", "league"],
+          ["usa.1", "ABD MLS", "MLS", "league"],
+          ["mex.1", "Meksika Liga MX", "LIGA MX", "league"],
+          ["bra.1", "Brezilya Série A", "BRASILEIRÃO", "league"],
+          ["arg.1", "Arjantin Liga Profesional", "LIGA PROFESIONAL", "league"],
+          ["jpn.1", "Japonya J1 League", "J1 LEAGUE", "league"],
+          ["afc.champions", "AFC Şampiyonlar Ligi Elite", "AFC CHAMPIONS LEAGUE", "league"],
+          ["concacaf.champions", "CONCACAF Şampiyonlar Kupası", "CONCACAF CHAMPIONS CUP", "league"]
+        ]}
+      ];
+      const LEAGUE_META = {};
+      LEAGUE_CATALOG.forEach((g) => g.items.forEach(([slug, label, title, theme]) => (LEAGUE_META[slug] = { slug, label, title, theme })));
 
-      window.addEventListener("load", () => {
-        Object.keys(THEMES).forEach((k) => getTrophyCanvas(THEMES[k].trophy));
-        fillLeagueSelect();
-        restoreTrophies();
-        applyURLParamsOnLoad();
-        setTheme(config.theme, false);
-        if (pendingLeague) {
-          leagueSelect.value = pendingLeague;
-          applyEspnLeague(pendingLeague, "only").then(() => {
-            if (new URLSearchParams(location.search).get("t")) setTheme(new URLSearchParams(location.search).get("t"), false);
-          });
+      const BUILTIN_CAT_LABELS = {
+        superlig: "Süper Lig", premier: "Premier League", laliga: "La Liga", seriea: "Serie A",
+        bundesliga: "Bundesliga", europe: "Avrupa", world: "Dünya", national: "Milli Takımlar"
+      };
+      const leagueCache = {};
+      const loadedLeagueOrder = [];
+      let leagueLoading = false;
+
+      function clubTags(c) {
+        if (!c.tags) c.tags = [c.cat || "custom"];
+        return c.tags;
+      }
+      function selectedCount() { return allClubs.filter((c) => c.enabled).length; }
+
+      function fillLeagueSelect(extraLeagues) {
+        const prev = leagueSelect.value || "uefa.champions";
+        let html = "";
+        LEAGUE_CATALOG.forEach((g) => {
+          html += `<optgroup label="${g.group}">` + g.items.map(([slug, label]) => `<option value="${slug}">${label}</option>`).join("") + `</optgroup>`;
+        });
+        if (extraLeagues && extraLeagues.length) {
+          html += `<optgroup label="Diğer tüm ligler">` + extraLeagues.map((l) => `<option value="${l.slug}">${escapeHtml(l.name)}</option>`).join("") + `</optgroup>`;
         }
-        preloadClubLogos(true);
-        rebuildWinnerDropdown();
-        switchMode(config.mode);
-        checkEncoderCapabilitiesUI();
-        requestAnimationFrame(previewLoop);
-      });
+        leagueSelect.innerHTML = html;
+        leagueSelect.value = [...leagueSelect.options].some((o) => o.value === prev) ? prev : "uefa.champions";
+      }
+
+      function escapeHtml(str) {
+        return String(str || "").replace(/[&<>"']/g, (ch) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[ch]));
+      }
+
+      async function fetchJson(url) {
+        const resp = await fetch(url.replace(/^http:/, "https:"));
+        if (!resp.ok) throw new Error("HTTP " + resp.status);
+        return resp.json();
+      }
+
+      async function loadAllLeagueNames() {
+        btnLoadAllLeagues.disabled = true;
+        leagueStatus.textContent = "Tüm ligler yükleniyor...";
+        try {
+          const idx = await fetchJson(`${ESPN_CORE}?limit=600`);
+          const refs = (idx.items || []).map((i) => i.$ref);
+          const out = [];
+          for (let k = 0; k < refs.length; k += 25) {
+            const part = await Promise.all(refs.slice(k, k + 25).map((u) => fetchJson(u).catch(() => null)));
+            part.forEach((l) => {
+              if (!l || !l.slug || LEAGUE_META[l.slug]) return;
+              if (/women|femenin|\.w\.|wchampions|wwc|nwsl|u17|u19|u20|u21|u23|olymp|friendly|futsal|reina|shebelieves|pinatar|arnold/i.test(l.slug + " " + (l.name || ""))) return;
+              out.push({ slug: l.slug, name: l.name || l.slug });
+            });
+            leagueStatus.textContent = `Ligler yükleniyor... ${Math.min(k + 25, refs.length)}/${refs.length}`;
+          }
+          out.sort((a, b) => a.name.localeCompare(b.name, "tr"));
+          fillLeagueSelect(out);
+          leagueStatus.textContent = `${out.length} ek lig/turnuva listeye eklendi.`;
+          btnLoadAllLeagues.classList.add("hidden");
+        } catch (err) {
+          console.error(err);
+          leagueStatus.textContent = "Lig listesi alınamadı. İnternet bağlantını kontrol et.";
+          btnLoadAllLeagues.disabled = false;
+        }
+      }
+
+      function pickLogo(logos) {
+        if (!logos || !logos.length) return "";
+        const def = logos.find((l) => (l.rel || []).includes("default") && !(l.rel || []).includes("dark"));
+        return (def || logos[0]).href.replace(/^http:/, "https:");
+      }
+
+      function upsertEspnTeam(t, tag) {
+        const id = Number(t.id);
+        let club = allClubs.find((c) => c.id === id || c.espnId === id);
+        if (!club) {
+          const nm = String(t.displayName || t.name || "TAKIM").toUpperCase().slice(0, 22);
+          club = {
+            key: "espn_" + id,
+            id: null,
+            espnId: id,
+            cat: tag,
+            tags: [],
+            name: nm,
+            short: String(t.abbreviation || nm.replace(/[^A-Z0-9]/g, "").slice(0, 3) || "CLB").toUpperCase(),
+            c1: t.color ? "#" + t.color : "#38bdf8",
+            c2: t.alternateColor ? "#" + t.alternateColor : "#1e3a8a",
+            enabled: false,
+            custom: false,
+            isFlag: !!t.isNational,
+            logoUrl: pickLogo(t.logos) || `https://a.espncdn.com/i/teamlogos/soccer/500/${id}.png`,
+            sprite: null,
+            realLoaded: false,
+            loadingStarted: false
+          };
+          club.sprite = createFallbackCrest(club);
+          allClubs.push(club);
+        }
+        const tags = clubTags(club);
+        if (!tags.includes(tag)) tags.push(tag);
+        return club;
+      }
+
+      async function fetchLeagueTeams(slug) {
+        if (leagueCache[slug]) return leagueCache[slug];
+        const idx = await fetchJson(`${ESPN_CORE}/${slug}/teams?limit=300`);
+        const refs = (idx.items || []).map((i) => i.$ref);
+        if (!refs.length) throw new Error("empty");
+        const teams = [];
+        for (let k = 0; k < refs.length; k += 12) {
+          const part = await Promise.all(refs.slice(k, k + 12).map((u) => fetchJson(u).catch(() => null)));
+          part.forEach((t) => t && teams.push(t));
+          leagueStatus.textContent = `Takımlar yükleniyor... ${teams.length}/${refs.length}`;
+        }
+        leagueCache[slug] = teams;
+        return teams;
+      }
+
+      async function applyEspnLeague(slug, mode = "only") {
+        if (leagueLoading) return;
+        leagueLoading = true;
+        btnLeagueOnly.disabled = btnLeagueAdd.disabled = true;
+        const meta = LEAGUE_META[slug] || { slug, label: leagueSelect.selectedOptions[0]?.textContent || slug, title: (leagueSelect.selectedOptions[0]?.textContent || slug).toUpperCase(), theme: null };
+        leagueStatus.textContent = `${meta.label} yükleniyor...`;
+        renderGridSkeleton();
+        try {
+          const teams = await fetchLeagueTeams(slug);
+          const clubs = teams.map((t) => upsertEspnTeam(t, slug));
+          if (!BUILTIN_CAT_LABELS[slug] && !loadedLeagueOrder.includes(slug)) loadedLeagueOrder.push(slug);
+          leagueLabels[slug] = meta.label;
+
+          if (mode === "only") {
+            const keep = new Set(clubs.map((c) => c.key));
+            allClubs.forEach((c) => (c.enabled = keep.has(c.key)));
+            config.subTitle = meta.title;
+            inputSubTitle.value = meta.title;
+            if (meta.theme) setTheme(meta.theme, false);
+          } else {
+            clubs.forEach((c) => (c.enabled = true));
+          }
+          config.preset = "espn:" + slug;
+          if (mode === "only") { config.leagueSlug = slug; getLeagueLogo(slug); }
+          clubs.forEach(loadClubLogo);
+          if (clubModal.classList.contains("hidden")) {
+            rebuildWinnerDropdown();
+            if (!isRendering) { previewRunning = false; updatePreviewButtonsUI(); resetPreview(); }
+          }
+          activeModalCategory = slug;
+          renderCategoryBar();
+          renderClubModalGrid();
+          leagueStatus.textContent = mode === "only"
+            ? `${meta.label}: ${clubs.length} takım seçildi. İstemediklerine dokunup çıkarabilirsin.`
+            : `${meta.label}: ${clubs.length} takım listeye eklendi (toplam ${selectedCount()} seçili).`;
+        } catch (err) {
+          console.error(err);
+          leagueStatus.textContent = "Bu lig şu an yüklenemedi (ESPN'de kadro yok ya da bağlantı sorunu). Başka bir lig dene.";
+          renderClubModalGrid();
+        } finally {
+          leagueLoading = false;
+          btnLeagueOnly.disabled = btnLeagueAdd.disabled = false;
+        }
+      }
