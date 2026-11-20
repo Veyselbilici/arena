@@ -33,7 +33,7 @@
         </div>
       </div>
 
-      <div class="overflow-y-auto custom-scroll flex-1 min-h-0 flex flex-col">
+      <div id="modalScroll" class="overflow-y-auto custom-scroll flex-1 min-h-0 overscroll-contain">
         <!-- CANLI LİG SEÇİCİ (ESPN) -->
         <div class="px-4 sm:px-5 py-3 border-b border-slate-800 bg-slate-950/40">
           <label for="leagueSelect" class="block text-[11px] font-bold uppercase tracking-wider text-slate-400 mb-1.5">Lig / Turnuva seç (güncel kadrolar)</label>
@@ -64,17 +64,19 @@
 
         <!-- HIZLI PAKETLER (çevrimdışı da çalışır) -->
         <div class="px-4 sm:px-5 py-2.5 border-b border-slate-800">
-          <span class="block text-[11px] font-bold uppercase tracking-wider text-slate-400 mb-2">Hızlı paketler</span>
+          <span class="block text-[11px] font-bold uppercase tracking-wider text-slate-400 mb-2">Tek dokunuşla güncel lig</span>
           <div class="chip-row flex gap-1.5 overflow-x-auto custom-scroll pb-1">
-            <button data-preset="ucl36" class="preset-btn chip">Şampiyonlar Ligi 36</button>
-            <button data-preset="superlig" class="preset-btn chip">Süper Lig 20</button>
-            <button data-preset="premier" class="preset-btn chip">Premier League 20</button>
-            <button data-preset="laliga" class="preset-btn chip">La Liga 16</button>
-            <button data-preset="seriea" class="preset-btn chip">Serie A 16</button>
-            <button data-preset="bundesliga" class="preset-btn chip">Bundesliga 14</button>
-            <button data-preset="worldcup" class="preset-btn chip">Milli Takımlar 24</button>
-            <button data-preset="super50" class="preset-btn chip">50 Dev Kulüp</button>
-            <button data-preset="mega" class="preset-btn chip">Mega Kaos (hepsi)</button>
+            <button data-league="uefa.champions" class="league-chip chip">Şampiyonlar Ligi</button>
+            <button data-league="uefa.europa" class="league-chip chip">Avrupa Ligi</button>
+            <button data-league="uefa.europa.conf" class="league-chip chip">Konferans Ligi</button>
+            <button data-league="tur.1" class="league-chip chip">Süper Lig</button>
+            <button data-league="eng.1" class="league-chip chip">Premier League</button>
+            <button data-league="esp.1" class="league-chip chip">LaLiga</button>
+            <button data-league="ita.1" class="league-chip chip">Serie A</button>
+            <button data-league="ger.1" class="league-chip chip">Bundesliga</button>
+            <button data-league="fra.1" class="league-chip chip">Ligue 1</button>
+            <button data-league="fifa.world" class="league-chip chip">Dünya Kupası</button>
+            <button data-preset="mega" class="preset-btn chip">Karışık: tüm yüklenenler</button>
           </div>
         </div>
 
@@ -581,11 +583,11 @@
     </div>
   </div>
 
-  <script src="js/app-1.js?v=b41737dc"></script>
-  <script src="js/app-2.js?v=e6db32ef"></script>
+  <script src="js/app-1.js?v=74682945"></script>
+  <script src="js/app-2.js?v=d675e5b1"></script>
   <script src="js/app-3.js?v=e6685662"></script>
   <script src="js/app-4.js?v=80a93b2d"></script>
   <script src="js/app-5.js?v=b050e2cc"></script>
-  <script src="js/app-6.js?v=76939796"></script>
+  <script src="js/app-6.js?v=90ebae1f"></script>
 </body>
 </html>
