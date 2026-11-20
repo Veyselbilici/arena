@@ -2,7 +2,8 @@
 <html lang="tr">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="theme-color" content="#060b21" />
   <title>FOOTBALL VIRAL ARENA STUDIO — WHO SURVIVES?</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://cdn.jsdelivr.net/npm/mp4-muxer@5.1.3/build/mp4-muxer.min.js"></script>
@@ -17,99 +18,103 @@
   <!-- Toast Bildirim Alanı -->
   <div id="toastContainer" class="fixed top-4 right-4 z-50 flex flex-col gap-2 max-w-sm pointer-events-none"></div>
 
-  <!-- Kulüp, Lig Paketleri & Canlı İnternet Logo Arama Modalı -->
-  <div id="clubModal" class="fixed inset-0 z-50 hidden items-center justify-center bg-black/80 backdrop-blur-sm p-2.5 sm:p-4">
-    <div class="bg-slate-900 border border-slate-700/80 rounded-2xl w-full max-w-4xl max-h-[92vh] flex flex-col shadow-2xl overflow-hidden">
+  <!-- Kulüp, Canlı Lig Seçici & Takım Arama Modalı -->
+  <div id="clubModal" class="fixed inset-0 z-50 hidden items-stretch sm:items-center justify-center bg-black/80 backdrop-blur-sm sm:p-4">
+    <div class="modal-sheet bg-slate-900 sm:border border-slate-700/80 sm:rounded-2xl w-full max-w-4xl h-full sm:h-auto sm:max-h-[92vh] flex flex-col shadow-2xl overflow-hidden">
       <!-- Modal Başlığı -->
-      <div class="px-4 sm:px-5 py-3.5 border-b border-slate-800 flex items-center justify-between gap-2 bg-slate-950/60">
-        <div>
-          <h3 class="text-sm sm:text-base font-extrabold text-white flex items-center gap-2">
-            <span>⚽</span> Takımlar, Lig Paketleri & Canlı Logo Arama
-          </h3>
-          <p class="text-[11px] sm:text-xs text-slate-400">
-            149 hazır gerçek kulüp/milli takım seçin veya internetten dilediğiniz kulübü gerçek logosuyla anında ekleyin.
-          </p>
+      <div class="px-4 sm:px-5 py-3 border-b border-slate-800 flex items-center justify-between gap-2 bg-slate-950/60 shrink-0">
+        <div class="min-w-0">
+          <h3 class="text-sm sm:text-base font-extrabold text-white">Takımlar & Ligler</h3>
+          <p class="text-[11px] sm:text-xs text-slate-400 truncate">Bir lig seç, takımları ekle/çıkar, istediğin kulübü ara.</p>
         </div>
-        <button id="btnCloseClubModal" class="w-9 h-9 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold cursor-pointer shrink-0">✕</button>
+        <div class="flex items-center gap-2 shrink-0">
+          <span id="modalSelectedCount" class="text-[11px] font-extrabold text-sky-300 bg-sky-950/70 border border-sky-700/50 px-2 py-1 rounded-lg">36 seçili</span>
+          <button id="btnCloseClubModal" aria-label="Kapat" class="w-10 h-10 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold cursor-pointer">✕</button>
+        </div>
       </div>
 
-      <!-- CANLI İNTERNETTEN TAKIM ARAMA (TheSportsDB) -->
-      <div class="px-4 sm:px-5 py-3 bg-indigo-950/35 border-b border-indigo-500/25">
-        <div class="flex flex-col sm:flex-row gap-2">
-          <div class="relative flex-1">
-            <input id="onlineTeamQuery" type="text" placeholder="🔍 İnternetten herhangi bir takım ara (ör. Vanspor, Sakaryaspor, Wrexham, San Marino...)"
-              class="w-full px-3.5 py-2.5 rounded-xl bg-slate-950/90 border border-indigo-400/40 text-xs sm:text-sm text-white placeholder-slate-400 focus:outline-none focus:border-sky-400" />
+      <div class="overflow-y-auto custom-scroll flex-1 min-h-0 flex flex-col">
+        <!-- CANLI LİG SEÇİCİ (ESPN) -->
+        <div class="px-4 sm:px-5 py-3 border-b border-slate-800 bg-slate-950/40">
+          <label for="leagueSelect" class="block text-[11px] font-bold uppercase tracking-wider text-slate-400 mb-1.5">Lig / Turnuva seç (güncel kadrolar)</label>
+          <div class="flex flex-col sm:flex-row gap-2">
+            <select id="leagueSelect" class="flex-1 min-w-0 px-3 py-2.5 rounded-xl bg-slate-950/90 border border-slate-700 text-sm font-semibold text-white focus:outline-none focus:border-sky-500 cursor-pointer"></select>
+            <div class="grid grid-cols-2 sm:flex gap-2 shrink-0">
+              <button id="btnLeagueOnly" type="button" class="press px-3.5 py-2.5 rounded-xl text-xs sm:text-sm font-extrabold bg-sky-600 hover:bg-sky-500 text-white cursor-pointer">Sadece bu lig</button>
+              <button id="btnLeagueAdd" type="button" class="press px-3.5 py-2.5 rounded-xl text-xs sm:text-sm font-extrabold bg-slate-800 hover:bg-slate-700 border border-slate-600 text-slate-100 cursor-pointer">+ Listeye ekle</button>
+            </div>
           </div>
-          <button id="btnOnlineSearch" type="button" class="px-4 py-2.5 rounded-xl text-xs sm:text-sm font-extrabold bg-indigo-600 hover:bg-indigo-500 text-white transition cursor-pointer shrink-0 flex items-center justify-center gap-1.5">
-            <span>🌐</span>
-            <span id="onlineSearchLabel">İnternette Ara</span>
-          </button>
-        </div>
-        <!-- Canlı Arama Sonuçları -->
-        <div id="onlineSearchResults" class="hidden mt-2.5 max-h-44 overflow-y-auto custom-scroll grid grid-cols-1 sm:grid-cols-2 gap-2"></div>
-      </div>
-
-      <!-- TEK TIKLA LİG PAKETLERİ -->
-      <div class="px-4 sm:px-5 py-2.5 bg-slate-950/70 border-b border-slate-800">
-        <div class="flex items-center justify-between gap-2 mb-2">
-          <span class="text-[11px] font-bold uppercase tracking-wider text-slate-400">Hazır Lig Paketleri</span>
-          <span id="modalSelectedCount" class="text-xs font-extrabold text-sky-400">36 / 149 Takım Seçili</span>
-        </div>
-        <div class="flex flex-wrap gap-1.5">
-          <button data-preset="ucl36" class="preset-btn px-2.5 py-1.5 rounded-lg text-[11px] font-bold bg-sky-950/80 hover:bg-sky-900 border border-sky-600/40 text-sky-200 cursor-pointer">🏆 Şampiyonlar Ligi (36)</button>
-          <button data-preset="superlig" class="preset-btn px-2.5 py-1.5 rounded-lg text-[11px] font-bold bg-rose-950/80 hover:bg-rose-900 border border-rose-600/40 text-rose-200 cursor-pointer">🇹🇷 Süper Lig (20)</button>
-          <button data-preset="premier" class="preset-btn px-2.5 py-1.5 rounded-lg text-[11px] font-bold bg-purple-950/80 hover:bg-purple-900 border border-purple-600/40 text-purple-200 cursor-pointer">🏴󠁧󠁢󠁥󠁮󠁧󠁿 Premier League (20)</button>
-          <button data-preset="laliga" class="preset-btn px-2.5 py-1.5 rounded-lg text-[11px] font-bold bg-amber-950/80 hover:bg-amber-900 border border-amber-600/40 text-amber-200 cursor-pointer">🇪🇸 La Liga (16)</button>
-          <button data-preset="seriea" class="preset-btn px-2.5 py-1.5 rounded-lg text-[11px] font-bold bg-blue-950/80 hover:bg-blue-900 border border-blue-600/40 text-blue-200 cursor-pointer">🇮🇹 Serie A (16)</button>
-          <button data-preset="bundesliga" class="preset-btn px-2.5 py-1.5 rounded-lg text-[11px] font-bold bg-red-950/80 hover:bg-red-900 border border-red-600/40 text-red-200 cursor-pointer">🇩🇪 Bundesliga (14)</button>
-          <button data-preset="worldcup" class="preset-btn px-2.5 py-1.5 rounded-lg text-[11px] font-bold bg-emerald-950/80 hover:bg-emerald-900 border border-emerald-600/40 text-emerald-200 cursor-pointer">🌍 Dünya Kupası (24)</button>
-          <button data-preset="super50" class="preset-btn px-2.5 py-1.5 rounded-lg text-[11px] font-bold bg-orange-950/80 hover:bg-orange-900 border border-orange-600/40 text-orange-200 cursor-pointer">🔥 Süper Karma (50 Dev)</button>
-          <button data-preset="mega" class="preset-btn px-2.5 py-1.5 rounded-lg text-[11px] font-bold bg-fuchsia-950/80 hover:bg-fuchsia-900 border border-fuchsia-500/50 text-fuchsia-200 cursor-pointer">💥 MEGA KAOS (Hepsi)</button>
-        </div>
-      </div>
-
-      <!-- KATEGORİ FİLTRE SEKMELERİ + HIZLI FİLTRE + TOPLU İŞLEMLER -->
-      <div class="px-4 sm:px-5 py-2.5 bg-slate-900/95 border-b border-slate-800 flex flex-col gap-2">
-        <div class="flex flex-wrap gap-1.5" id="categoryFilterBar">
-          <button data-cat="all" class="cat-tab px-2.5 py-1 rounded-lg text-[11px] font-bold bg-sky-600 text-white cursor-pointer">Tümü</button>
-          <button data-cat="superlig" class="cat-tab px-2.5 py-1 rounded-lg text-[11px] font-bold bg-slate-800 text-slate-300 hover:bg-slate-700 cursor-pointer">🇹🇷 Süper Lig</button>
-          <button data-cat="premier" class="cat-tab px-2.5 py-1 rounded-lg text-[11px] font-bold bg-slate-800 text-slate-300 hover:bg-slate-700 cursor-pointer">Premier League</button>
-          <button data-cat="laliga" class="cat-tab px-2.5 py-1 rounded-lg text-[11px] font-bold bg-slate-800 text-slate-300 hover:bg-slate-700 cursor-pointer">La Liga</button>
-          <button data-cat="seriea" class="cat-tab px-2.5 py-1 rounded-lg text-[11px] font-bold bg-slate-800 text-slate-300 hover:bg-slate-700 cursor-pointer">Serie A</button>
-          <button data-cat="bundesliga" class="cat-tab px-2.5 py-1 rounded-lg text-[11px] font-bold bg-slate-800 text-slate-300 hover:bg-slate-700 cursor-pointer">Bundesliga</button>
-          <button data-cat="europe" class="cat-tab px-2.5 py-1 rounded-lg text-[11px] font-bold bg-slate-800 text-slate-300 hover:bg-slate-700 cursor-pointer">Avrupa Devleri</button>
-          <button data-cat="world" class="cat-tab px-2.5 py-1 rounded-lg text-[11px] font-bold bg-slate-800 text-slate-300 hover:bg-slate-700 cursor-pointer">Dünya Devleri</button>
-          <button data-cat="national" class="cat-tab px-2.5 py-1 rounded-lg text-[11px] font-bold bg-slate-800 text-slate-300 hover:bg-slate-700 cursor-pointer">🌍 Milli Takımlar</button>
-          <button data-cat="custom" class="cat-tab px-2.5 py-1 rounded-lg text-[11px] font-bold bg-slate-800 text-emerald-300 hover:bg-slate-700 cursor-pointer">⭐ Özel</button>
+          <div class="mt-2 flex items-center justify-between gap-2">
+            <p id="leagueStatus" class="text-[11px] text-slate-400 min-h-[1rem]">Şampiyonlar Ligi, Avrupa Ligi, Konferans Ligi, Süper Lig ve 150+ lig/turnuva.</p>
+            <button id="btnLoadAllLeagues" type="button" class="text-[11px] font-bold text-sky-300 hover:text-sky-200 underline underline-offset-2 cursor-pointer shrink-0">Tüm ligleri göster</button>
+          </div>
         </div>
 
-        <div class="flex flex-wrap items-center gap-2">
-          <input id="localTeamSearch" type="text" placeholder="Listede filtrele (ör. Galatasaray, Real, Türkiye...)"
-            class="flex-1 min-w-[180px] px-3 py-1.5 rounded-xl bg-slate-950/90 border border-slate-700 text-xs text-white focus:outline-none focus:border-sky-500" />
-          <button id="btnSelectAllVisible" type="button" class="px-2.5 py-1.5 rounded-lg text-[11px] font-bold bg-slate-800 hover:bg-slate-700 text-emerald-300 cursor-pointer">✓ Tümünü Seç</button>
-          <button id="btnClearAllClubs" type="button" class="px-2.5 py-1.5 rounded-lg text-[11px] font-bold bg-slate-800 hover:bg-slate-700 text-rose-300 cursor-pointer">✕ Temizle</button>
-          <button id="btnRandom36" type="button" class="px-2.5 py-1.5 rounded-lg text-[11px] font-bold bg-slate-800 hover:bg-slate-700 text-amber-300 cursor-pointer">🎲 Rastgele 36</button>
+        <!-- TAKIM ARAMA (ESPN) -->
+        <div class="px-4 sm:px-5 py-3 border-b border-slate-800">
+          <div class="flex gap-2">
+            <input id="onlineTeamQuery" type="search" enterkeyhint="search" placeholder="Takım ara (ör. Sakaryaspor, Kocaelispor, Wrexham)"
+              class="flex-1 min-w-0 px-3.5 py-2.5 rounded-xl bg-slate-950/90 border border-slate-700 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-sky-500" />
+            <button id="btnOnlineSearch" type="button" class="press px-4 py-2.5 rounded-xl text-sm font-extrabold bg-slate-800 hover:bg-slate-700 border border-slate-600 text-white cursor-pointer shrink-0">
+              <span id="onlineSearchLabel">Ara</span>
+            </button>
+          </div>
+          <div id="onlineSearchResults" class="hidden mt-2.5 max-h-52 overflow-y-auto custom-scroll grid grid-cols-1 sm:grid-cols-2 gap-2"></div>
         </div>
-      </div>
+
+        <!-- HIZLI PAKETLER (çevrimdışı da çalışır) -->
+        <div class="px-4 sm:px-5 py-2.5 border-b border-slate-800">
+          <span class="block text-[11px] font-bold uppercase tracking-wider text-slate-400 mb-2">Hızlı paketler</span>
+          <div class="chip-row flex gap-1.5 overflow-x-auto custom-scroll pb-1">
+            <button data-preset="ucl36" class="preset-btn chip">Şampiyonlar Ligi 36</button>
+            <button data-preset="superlig" class="preset-btn chip">Süper Lig 20</button>
+            <button data-preset="premier" class="preset-btn chip">Premier League 20</button>
+            <button data-preset="laliga" class="preset-btn chip">La Liga 16</button>
+            <button data-preset="seriea" class="preset-btn chip">Serie A 16</button>
+            <button data-preset="bundesliga" class="preset-btn chip">Bundesliga 14</button>
+            <button data-preset="worldcup" class="preset-btn chip">Milli Takımlar 24</button>
+            <button data-preset="super50" class="preset-btn chip">50 Dev Kulüp</button>
+            <button data-preset="mega" class="preset-btn chip">Mega Kaos (hepsi)</button>
+          </div>
+        </div>
+
+        <!-- KATEGORİ FİLTRE + TOPLU İŞLEMLER -->
+        <div class="px-4 sm:px-5 py-2.5 border-b border-slate-800 flex flex-col gap-2 bg-slate-900/95 sticky top-0 z-10">
+          <div class="chip-row flex gap-1.5 overflow-x-auto custom-scroll pb-1" id="categoryFilterBar"></div>
+          <div class="flex flex-wrap items-center gap-2">
+            <input id="localTeamSearch" type="search" placeholder="Listede filtrele"
+              class="flex-1 min-w-[140px] px-3 py-2 rounded-xl bg-slate-950/90 border border-slate-700 text-xs text-white focus:outline-none focus:border-sky-500" />
+            <button id="btnSelectAllVisible" type="button" class="chip">Görünenleri seç</button>
+            <button id="btnDeselectVisible" type="button" class="chip">Görünenleri çıkar</button>
+            <button id="btnOnlySelected" type="button" class="chip">Sadece seçililer</button>
+            <button id="btnClearAllClubs" type="button" class="chip">Temizle</button>
+            <button id="btnRandom36" type="button" class="chip">Rastgele 36</button>
+          </div>
+        </div>
 
       <!-- TAKIM LİSTESİ GRİDİ -->
-      <div id="clubGrid" class="p-3 sm:p-4 overflow-y-auto custom-scroll grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2 flex-1 min-h-[200px]"></div>
+      <div id="clubGrid" class="p-3 sm:p-4 grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2 min-h-[200px] content-start"></div>
 
-      <!-- ALT BÖLÜM: MANUEL ÖZEL TAKIM EKLEME & UYGULA -->
-      <div class="px-4 sm:px-5 py-3 border-t border-slate-800 bg-slate-950/75 flex flex-col gap-2.5">
-        <div class="flex flex-wrap items-center gap-2">
-          <input id="manualTeamName" type="text" placeholder="Manuel Takım Adı" maxlength="24"
-            class="w-36 sm:w-44 px-3 py-2 rounded-xl bg-slate-900 border border-slate-700 text-xs text-white focus:outline-none focus:border-emerald-400" />
-          <input id="manualTeamUrl" type="url" placeholder="Logo Görsel URL'si (isteğe bağlı)"
-            class="flex-1 min-w-[160px] px-3 py-2 rounded-xl bg-slate-900 border border-slate-700 text-xs text-white focus:outline-none focus:border-emerald-400" />
-          <button id="btnAddManualTeam" type="button" class="px-3 py-2 rounded-xl text-xs font-bold bg-emerald-700 hover:bg-emerald-600 text-white cursor-pointer shrink-0">+ Ekle</button>
-          <label class="px-3 py-2 rounded-xl text-xs font-bold bg-slate-800 hover:bg-slate-700 border border-slate-700 text-emerald-300 cursor-pointer flex items-center gap-1 shrink-0">
-            <span>📁</span>
-            <span>Cihazdan PNG</span>
-            <input id="modalCustomLogoInput" type="file" accept="image/*" multiple class="hidden" />
-          </label>
-          <button id="btnApplyClubs" class="ml-auto px-5 py-2 rounded-xl font-black text-xs sm:text-sm bg-sky-600 hover:bg-sky-500 text-white cursor-pointer shrink-0">✓ Uygula & Güncelle</button>
+        <!-- MANUEL TAKIM EKLEME -->
+        <div class="px-4 sm:px-5 py-3 border-t border-slate-800">
+          <span class="block text-[11px] font-bold uppercase tracking-wider text-slate-400 mb-2">Listede olmayan takım ekle</span>
+          <div class="grid grid-cols-1 sm:grid-cols-[1fr_1.4fr_auto_auto] gap-2">
+            <input id="manualTeamName" type="text" placeholder="Takım adı" maxlength="24"
+              class="px-3 py-2.5 rounded-xl bg-slate-950/90 border border-slate-700 text-sm text-white focus:outline-none focus:border-sky-500" />
+            <input id="manualTeamUrl" type="url" placeholder="Logo linki (isteğe bağlı)"
+              class="px-3 py-2.5 rounded-xl bg-slate-950/90 border border-slate-700 text-sm text-white focus:outline-none focus:border-sky-500" />
+            <button id="btnAddManualTeam" type="button" class="press px-4 py-2.5 rounded-xl text-sm font-bold bg-slate-800 hover:bg-slate-700 border border-slate-600 text-white cursor-pointer">Ekle</button>
+            <label class="press px-4 py-2.5 rounded-xl text-sm font-bold bg-slate-800 hover:bg-slate-700 border border-slate-600 text-slate-200 cursor-pointer text-center">
+              Cihazdan logo
+              <input id="modalCustomLogoInput" type="file" accept="image/*" multiple class="hidden" />
+            </label>
+          </div>
         </div>
+      </div>
+
+      <!-- UYGULA -->
+      <div class="px-4 sm:px-5 py-3 border-t border-slate-800 bg-slate-950/80 shrink-0 safe-bottom">
+        <button id="btnApplyClubs" class="press w-full sm:w-auto sm:float-right px-6 py-3 rounded-xl font-black text-sm bg-sky-600 hover:bg-sky-500 text-white cursor-pointer">Uygula ve arenaya gönder</button>
       </div>
     </div>
   </div>
@@ -118,41 +123,41 @@
   <div class="max-w-7xl mx-auto px-3 sm:px-6 py-4">
 
     <!-- Üst Stüdyo Başlığı -->
-    <header class="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3 mb-4 pb-4 border-b border-slate-800/80">
+    <header class="flex flex-row flex-wrap items-center justify-between gap-2 sm:gap-3 mb-3 sm:mb-4 pb-3 sm:pb-4 border-b border-slate-800/80">
       <div class="flex items-center gap-3">
-        <div class="w-11 h-11 rounded-2xl bg-gradient-to-br from-sky-500 via-blue-600 to-indigo-800 flex items-center justify-center shadow-lg shadow-blue-900/50 shrink-0 border border-sky-400/30">
+        <div class="w-9 h-9 sm:w-11 sm:h-11 rounded-xl sm:rounded-2xl bg-gradient-to-br from-sky-500 via-blue-600 to-indigo-800 flex items-center justify-center shadow-lg shadow-blue-900/50 shrink-0 border border-sky-400/30">
           <svg class="w-6 h-6 text-amber-300" fill="currentColor" viewBox="0 0 24 24">
             <path d="M12 2l2.39 4.84 5.34.78-3.87 3.77.91 5.32L12 14.2l-4.77 2.51.91-5.32-3.87-3.77 5.34-.78L12 2z"/>
           </svg>
         </div>
         <div>
-          <h1 class="text-base sm:text-xl font-black tracking-tight text-white">
-            FOOTBALL VIRAL ARENA STUDIO <span class="text-sky-400">— WHO SURVIVES?</span>
+          <h1 class="text-[15px] sm:text-xl font-black tracking-tight text-white leading-tight">
+            <span class="sm:hidden">VIRAL ARENA STUDIO</span><span class="hidden sm:inline">FOOTBALL VIRAL ARENA STUDIO <span class="text-sky-400">— WHO SURVIVES?</span></span>
           </h1>
-          <p class="text-xs text-slate-400">
+          <p class="hidden sm:block text-xs text-slate-400">
             4 Viral Oyun Modu • 9:16 Reels & TikTok Stüdyosu • Doğrudan MP4 / WebM İndirme
           </p>
         </div>
       </div>
 
       <div class="flex flex-wrap items-center gap-2">
-        <button id="btnShareLink" class="px-3 py-1.5 rounded-xl text-xs font-bold bg-indigo-600/25 hover:bg-indigo-600/40 border border-indigo-400/50 text-indigo-200 transition flex items-center gap-1.5 cursor-pointer">
+        <button id="btnShareLink" class="press px-3 py-2 rounded-xl text-xs font-bold bg-slate-800 hover:bg-slate-700 border border-slate-600 text-slate-100 transition flex items-center gap-1.5 cursor-pointer">
           <span>🔗</span>
-          <span>Ayarları Linkle Kopyala</span>
+          <span class="hidden sm:inline">Ayarları Linkle Kopyala</span><span class="sm:hidden">Link</span>
         </button>
-        <div id="logoStatusPill" class="px-3 py-1.5 rounded-full text-xs font-semibold bg-slate-800/90 border border-slate-700 text-sky-300">
+        <div id="logoStatusPill" class="hidden sm:block px-3 py-1.5 rounded-full text-xs font-semibold bg-slate-800/90 border border-slate-700 text-sky-300">
           Logolar: 0/36 Yükleniyor...
         </div>
-        <div id="encoderBadge" class="px-3 py-1.5 rounded-full text-xs font-semibold bg-slate-800/90 border border-slate-700 text-slate-300">
+        <div id="encoderBadge" class="hidden md:block px-3 py-1.5 rounded-full text-xs font-semibold bg-slate-800/90 border border-slate-700 text-slate-300">
           Motor Kontrol...
         </div>
       </div>
     </header>
 
     <!-- ÇOKLU MOD / SAYFA ÜST NAVİGASYON BARI -->
-    <nav aria-label="Oyun Modları" class="mb-5">
-      <div class="grid grid-cols-2 sm:grid-cols-5 gap-2">
-        <button data-mode="ring" class="mode-tab mode-tab-active px-3 py-2.5 rounded-2xl border border-slate-800 bg-slate-900/80 hover:bg-slate-800/90 text-left transition cursor-pointer flex items-center gap-2.5">
+    <nav aria-label="Oyun Modları" class="mb-4 sm:mb-5 -mx-3 sm:mx-0">
+      <div class="mode-strip flex sm:grid sm:grid-cols-5 gap-2 overflow-x-auto px-3 sm:px-0 pb-1 snap-x">
+        <button data-mode="ring" class="mode-tab press shrink-0 snap-start min-w-[150px] sm:min-w-0 mode-tab-active px-3 py-2.5 rounded-2xl border border-slate-800 bg-slate-900/80 hover:bg-slate-800/90 text-left transition cursor-pointer flex items-center gap-2.5">
           <span class="text-xl shrink-0">🌀</span>
           <div class="min-w-0">
             <div class="text-xs sm:text-sm font-extrabold truncate">Klasik Halka</div>
@@ -160,7 +165,7 @@
           </div>
         </button>
 
-        <button data-mode="bomb" class="mode-tab px-3 py-2.5 rounded-2xl border border-slate-800 bg-slate-900/80 hover:bg-slate-800/90 text-slate-300 text-left transition cursor-pointer flex items-center gap-2.5">
+        <button data-mode="bomb" class="mode-tab press shrink-0 snap-start min-w-[150px] sm:min-w-0 px-3 py-2.5 rounded-2xl border border-slate-800 bg-slate-900/80 hover:bg-slate-800/90 text-slate-300 text-left transition cursor-pointer flex items-center gap-2.5">
           <span class="text-xl shrink-0">💣</span>
           <div class="min-w-0">
             <div class="text-xs sm:text-sm font-extrabold truncate">Saatli Bomba</div>
@@ -168,7 +173,7 @@
           </div>
         </button>
 
-        <button data-mode="blade" class="mode-tab px-3 py-2.5 rounded-2xl border border-slate-800 bg-slate-900/80 hover:bg-slate-800/90 text-slate-300 text-left transition cursor-pointer flex items-center gap-2.5">
+        <button data-mode="blade" class="mode-tab press shrink-0 snap-start min-w-[150px] sm:min-w-0 px-3 py-2.5 rounded-2xl border border-slate-800 bg-slate-900/80 hover:bg-slate-800/90 text-slate-300 text-left transition cursor-pointer flex items-center gap-2.5">
           <span class="text-xl shrink-0">⚔️</span>
           <div class="min-w-0">
             <div class="text-xs sm:text-sm font-extrabold truncate">Kılıç Savaşı</div>
@@ -176,7 +181,7 @@
           </div>
         </button>
 
-        <button data-mode="laser" class="mode-tab px-3 py-2.5 rounded-2xl border border-slate-800 bg-slate-900/80 hover:bg-slate-800/90 text-slate-300 text-left transition cursor-pointer flex items-center gap-2.5">
+        <button data-mode="laser" class="mode-tab press shrink-0 snap-start min-w-[150px] sm:min-w-0 px-3 py-2.5 rounded-2xl border border-slate-800 bg-slate-900/80 hover:bg-slate-800/90 text-slate-300 text-left transition cursor-pointer flex items-center gap-2.5">
           <span class="text-xl shrink-0">⚡</span>
           <div class="min-w-0">
             <div class="text-xs sm:text-sm font-extrabold truncate">Ölüm Lazeri</div>
@@ -184,7 +189,7 @@
           </div>
         </button>
 
-        <button id="btnNavClubs" class="col-span-2 sm:col-span-1 px-3 py-2.5 rounded-2xl border border-emerald-500/35 bg-emerald-950/35 hover:bg-emerald-900/45 text-emerald-200 text-left transition cursor-pointer flex items-center gap-2.5">
+        <button id="btnNavClubs" class="press shrink-0 snap-start min-w-[150px] sm:min-w-0 px-3 py-2.5 rounded-2xl border border-emerald-500/35 bg-emerald-950/35 hover:bg-emerald-900/45 text-emerald-200 text-left transition cursor-pointer flex items-center gap-2.5">
           <span class="text-xl shrink-0">⚽</span>
           <div class="min-w-0">
             <div class="text-xs sm:text-sm font-extrabold truncate">Takımlar</div>
@@ -199,7 +204,7 @@
 
       <!-- SOL SÜTUN: 9:16 Canlı Önizleme + Render İlerleme Katmanı -->
       <div class="lg:col-span-5 flex flex-col items-center lg:sticky lg:top-4">
-        <div class="stage-frame relative rounded-2xl p-1.5 bg-slate-900/90 w-full max-w-[390px]">
+        <div class="stage-frame relative rounded-2xl p-1 sm:p-1.5 bg-slate-900/90 w-full max-w-[390px]">
           <canvas id="simCanvas" width="1080" height="1920"></canvas>
 
           <!-- Video Oluşturma (Render) İlerleme Katmanı -->
@@ -243,7 +248,7 @@
         </div>
 
         <!-- Önizleme Kontrolleri -->
-        <div class="mt-3 w-full max-w-[390px] bg-slate-900/85 border border-slate-800 rounded-2xl p-3 flex flex-col gap-2">
+        <div class="hidden lg:flex mt-3 w-full max-w-[390px] bg-slate-900/85 border border-slate-800 rounded-2xl p-3 flex-col gap-2">
           <div class="flex items-center justify-between text-xs text-slate-400 px-0.5">
             <span>Önizleme: <strong id="previewElapsed" class="font-mono text-sky-300">00:00</strong></span>
             <span>Kalan: <strong id="previewRemaining" class="font-mono text-slate-200">36 / 36</strong></span>
@@ -392,7 +397,7 @@
           </div>
 
           <!-- ORTAK FİZİK & VİRAL HIZ AYARLARI -->
-          <div class="grid grid-cols-1 sm:grid-cols-3 gap-2.5 mt-3 pt-3 border-t border-slate-800/80">
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5 mt-3 pt-3 border-t border-slate-800/80">
             <div class="bg-slate-950/55 rounded-xl p-2.5 border border-slate-800/80">
               <div class="flex justify-between text-xs mb-1.5">
                 <label for="sliderSimSpeed" class="font-semibold text-slate-300">Genel Hız</label>
@@ -412,9 +417,17 @@
             <div class="bg-slate-950/55 rounded-xl p-2.5 border border-slate-800/80">
               <div class="flex justify-between text-xs mb-1.5">
                 <label for="sliderLogoSize" class="font-semibold text-slate-300">Logo Boyutu</label>
-                <span id="valLogoSize" class="font-mono text-sky-400 font-bold">37 px</span>
+                <span id="valLogoSize" class="font-mono text-sky-400 font-bold">44 px</span>
               </div>
-              <input id="sliderLogoSize" type="range" min="28" max="48" step="1" value="37" />
+              <input id="sliderLogoSize" type="range" min="28" max="72" step="1" value="44" />
+            </div>
+
+            <div class="bg-slate-950/55 rounded-xl p-2.5 border border-slate-800/80">
+              <div class="flex justify-between text-xs mb-1.5">
+                <label for="sliderSpin" class="font-semibold text-slate-300">Logo Dönüş Hızı</label>
+                <span id="valSpin" class="font-mono text-sky-400 font-bold">Yavaş</span>
+              </div>
+              <input id="sliderSpin" type="range" min="0" max="1.5" step="0.05" value="0.3" />
             </div>
           </div>
         </section>
@@ -426,8 +439,9 @@
               <span>🏆</span> Şampiyon, Tema & Viral Efektler
             </h2>
             <div class="flex items-center gap-2">
-              <label class="px-2.5 py-1 rounded-lg text-[11px] font-bold bg-slate-800 hover:bg-slate-700 border border-slate-700 text-amber-300 cursor-pointer">
-                🏆 Özel Kupa PNG
+              <span id="trophyThemeLabel" class="hidden md:inline text-[10px] text-slate-500"></span>
+              <label class="press px-2.5 py-1.5 rounded-lg text-[11px] font-bold bg-slate-800 hover:bg-slate-700 border border-slate-700 text-amber-300 cursor-pointer">
+                🏆 <span class="hidden sm:inline">Bu lige</span> gerçek kupa yükle
                 <input id="customTrophyInput" type="file" accept="image/*" class="hidden" />
               </label>
               <button id="btnResetTrophy" title="Varsayılan Kupaya Dön" class="hidden px-2 py-1 rounded-lg text-[11px] font-bold bg-rose-950 hover:bg-rose-900 border border-rose-700/60 text-rose-200 cursor-pointer">✕</button>
@@ -447,10 +461,19 @@
             <div>
               <label for="selectTheme" class="block text-xs font-bold text-slate-300 mb-1">🎨 Arena Teması</label>
               <select id="selectTheme" class="w-full px-3 py-2.5 rounded-xl bg-slate-950/90 border border-slate-700 text-xs sm:text-sm font-semibold text-white focus:outline-none focus:border-sky-500 cursor-pointer">
-                <option value="ucl">🌌 UEFA Champions League (Gümüş Kupa)</option>
-                <option value="superlig">🇹🇷 Süper Lig / Derbi Ateşi (Altın Kupa)</option>
-                <option value="europa">🔥 Europa League (Turuncu Alev)</option>
-                <option value="worldcup">🏆 Dünya Kupası / Altın Arena</option>
+                <option value="ucl">UEFA Şampiyonlar Ligi</option>
+                <option value="europa">UEFA Avrupa Ligi</option>
+                <option value="conference">UEFA Konferans Ligi</option>
+                <option value="superlig">Süper Lig / Derbi Ateşi</option>
+                <option value="premier">Premier League</option>
+                <option value="laliga">LaLiga</option>
+                <option value="seriea">Serie A</option>
+                <option value="bundesliga">Bundesliga</option>
+                <option value="ligue1">Ligue 1</option>
+                <option value="eredivisie">Eredivisie</option>
+                <option value="liga_pt">Liga Portugal</option>
+                <option value="league">Diğer Ligler (Premium)</option>
+                <option value="worldcup">Dünya Kupası / Milli Takımlar</option>
               </select>
             </div>
           </div>
@@ -468,8 +491,8 @@
                 class="w-full px-3 py-2 rounded-xl bg-slate-950/80 border border-slate-700 text-xs sm:text-sm text-white focus:outline-none focus:border-sky-500" />
             </div>
             <div>
-              <label for="inputWatermark" class="block text-[11px] font-semibold text-slate-400 mb-1">Filigran (@hesap)</label>
-              <input id="inputWatermark" type="text" value="" placeholder="@kullaniciadi" maxlength="28"
+              <label for="inputWatermark" class="block text-[11px] font-semibold text-slate-400 mb-1">Filigran</label>
+              <input id="inputWatermark" type="text" value="taktiksports" placeholder="taktiksports" maxlength="28"
                 class="w-full px-3 py-2 rounded-xl bg-slate-950/80 border border-slate-700 text-xs sm:text-sm text-sky-300 placeholder-slate-500 focus:outline-none focus:border-sky-500" />
             </div>
           </div>
@@ -496,6 +519,11 @@
             <label class="flex items-center justify-between gap-2 px-3 py-2.5 rounded-xl bg-slate-950/60 border border-slate-800 cursor-pointer">
               <span class="text-xs font-bold text-slate-200">🔊 Ses Efektleri (Videoya Dahil)</span>
               <input id="toggleAudio" type="checkbox" checked class="w-4 h-4 accent-sky-500 cursor-pointer" />
+            </label>
+
+            <label class="flex items-center justify-between gap-2 px-3 py-2.5 rounded-xl bg-slate-950/60 border border-slate-800 cursor-pointer sm:col-span-2">
+              <span class="text-xs font-bold text-slate-200">Lig logosunu üstte göster</span>
+              <input id="toggleLeagueLogo" type="checkbox" checked class="w-4 h-4 accent-sky-500 cursor-pointer" />
             </label>
           </div>
         </section>
@@ -544,10 +572,20 @@
     </div>
   </div>
 
+  <!-- MOBİL ALT EYLEM ÇUBUĞU -->
+  <div id="mobileBar" class="lg:hidden fixed inset-x-0 bottom-0 z-40 safe-bottom bg-slate-950/92 backdrop-blur border-t border-slate-800">
+    <div class="max-w-xl mx-auto px-3 py-2.5 grid grid-cols-[auto_auto_1fr] gap-2 items-center">
+      <button id="mbPlay" class="press w-12 h-12 rounded-xl bg-slate-800 border border-slate-700 text-white text-lg font-black cursor-pointer" aria-label="Önizleme">▶</button>
+      <button id="mbReset" class="press w-12 h-12 rounded-xl bg-slate-800/70 border border-slate-700 text-slate-300 text-lg font-black cursor-pointer" aria-label="Sıfırla">↻</button>
+      <button id="mbGenerate" class="press h-12 rounded-xl font-black text-sm text-white bg-emerald-600 hover:bg-emerald-500 cursor-pointer">Videoyu Oluştur ve İndir</button>
+    </div>
+  </div>
+
   <script src="js/app-1.js"></script>
   <script src="js/app-2.js"></script>
   <script src="js/app-3.js"></script>
   <script src="js/app-4.js"></script>
   <script src="js/app-5.js"></script>
+  <script src="js/app-6.js"></script>
 </body>
 </html>
