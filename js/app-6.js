@@ -501,7 +501,20 @@
         if (previewState) previewState.selectedWinnerKey = config.selectedWinnerKey;
       });
 
-      selectTheme.addEventListener("change", (e) => setTheme(e.target.value, true));
+      // Tema listesinden lig seçilince o ligin güncel takımları da otomatik gelir
+      selectTheme.addEventListener("change", (e) => {
+        const key = e.target.value;
+        setTheme(key, true);
+        const slug = THEMES[key] && THEMES[key].leagueSlug;
+        if (slug) {
+          if ([...leagueSelect.options].some((o) => o.value === slug)) leagueSelect.value = slug;
+          showToast(`${THEMES[key].name}: güncel takımlar yükleniyor...`, "info");
+          applyEspnLeague(slug, "only").then(() => {
+            if (leagueCache[slug]) showToast(`${THEMES[key].name}: ${selectedCount()} takım arenada.`, "success");
+            else showToast("Lig yüklenemedi, bağlantını kontrol et. Tema yine de uygulandı.", "warn");
+          });
+        }
+      });
 
       inputSubTitle.addEventListener("input", (e) => (config.subTitle = e.target.value));
       inputMainTitle.addEventListener("input", (e) => (config.mainTitle = e.target.value));
