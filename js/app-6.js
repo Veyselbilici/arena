@@ -489,6 +489,7 @@
         valSpin.textContent = spinLabel(config.spinSpeed);
       });
       toggleLeagueLogo.addEventListener("change", (e) => (config.showLeagueLogo = e.target.checked));
+      selectDuration.addEventListener("change", (e) => (config.targetDuration = parseInt(e.target.value, 10) || 0));
 
       sliderLogoSize.addEventListener("input", (e) => {
         config.logoRadius = parseInt(e.target.value, 10);
