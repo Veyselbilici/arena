@@ -1,0 +1,553 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>FOOTBALL VIRAL ARENA STUDIO — WHO SURVIVES?</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/mp4-muxer@5.1.3/build/mp4-muxer.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/webm-muxer@5.0.2/build/webm-muxer.min.js"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=Montserrat:wght@700;800;900&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="css/app.css" />
+</head>
+<body class="antialiased selection:bg-sky-500/30">
+
+  <!-- Toast Bildirim Alanı -->
+  <div id="toastContainer" class="fixed top-4 right-4 z-50 flex flex-col gap-2 max-w-sm pointer-events-none"></div>
+
+  <!-- Kulüp, Lig Paketleri & Canlı İnternet Logo Arama Modalı -->
+  <div id="clubModal" class="fixed inset-0 z-50 hidden items-center justify-center bg-black/80 backdrop-blur-sm p-2.5 sm:p-4">
+    <div class="bg-slate-900 border border-slate-700/80 rounded-2xl w-full max-w-4xl max-h-[92vh] flex flex-col shadow-2xl overflow-hidden">
+      <!-- Modal Başlığı -->
+      <div class="px-4 sm:px-5 py-3.5 border-b border-slate-800 flex items-center justify-between gap-2 bg-slate-950/60">
+        <div>
+          <h3 class="text-sm sm:text-base font-extrabold text-white flex items-center gap-2">
+            <span>⚽</span> Takımlar, Lig Paketleri & Canlı Logo Arama
+          </h3>
+          <p class="text-[11px] sm:text-xs text-slate-400">
+            149 hazır gerçek kulüp/milli takım seçin veya internetten dilediğiniz kulübü gerçek logosuyla anında ekleyin.
+          </p>
+        </div>
+        <button id="btnCloseClubModal" class="w-9 h-9 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold cursor-pointer shrink-0">✕</button>
+      </div>
+
+      <!-- CANLI İNTERNETTEN TAKIM ARAMA (TheSportsDB) -->
+      <div class="px-4 sm:px-5 py-3 bg-indigo-950/35 border-b border-indigo-500/25">
+        <div class="flex flex-col sm:flex-row gap-2">
+          <div class="relative flex-1">
+            <input id="onlineTeamQuery" type="text" placeholder="🔍 İnternetten herhangi bir takım ara (ör. Vanspor, Sakaryaspor, Wrexham, San Marino...)"
+              class="w-full px-3.5 py-2.5 rounded-xl bg-slate-950/90 border border-indigo-400/40 text-xs sm:text-sm text-white placeholder-slate-400 focus:outline-none focus:border-sky-400" />
+          </div>
+          <button id="btnOnlineSearch" type="button" class="px-4 py-2.5 rounded-xl text-xs sm:text-sm font-extrabold bg-indigo-600 hover:bg-indigo-500 text-white transition cursor-pointer shrink-0 flex items-center justify-center gap-1.5">
+            <span>🌐</span>
+            <span id="onlineSearchLabel">İnternette Ara</span>
+          </button>
+        </div>
+        <!-- Canlı Arama Sonuçları -->
+        <div id="onlineSearchResults" class="hidden mt-2.5 max-h-44 overflow-y-auto custom-scroll grid grid-cols-1 sm:grid-cols-2 gap-2"></div>
+      </div>
+
+      <!-- TEK TIKLA LİG PAKETLERİ -->
+      <div class="px-4 sm:px-5 py-2.5 bg-slate-950/70 border-b border-slate-800">
+        <div class="flex items-center justify-between gap-2 mb-2">
+          <span class="text-[11px] font-bold uppercase tracking-wider text-slate-400">Hazır Lig Paketleri</span>
+          <span id="modalSelectedCount" class="text-xs font-extrabold text-sky-400">36 / 149 Takım Seçili</span>
+        </div>
+        <div class="flex flex-wrap gap-1.5">
+          <button data-preset="ucl36" class="preset-btn px-2.5 py-1.5 rounded-lg text-[11px] font-bold bg-sky-950/80 hover:bg-sky-900 border border-sky-600/40 text-sky-200 cursor-pointer">🏆 Şampiyonlar Ligi (36)</button>
+          <button data-preset="superlig" class="preset-btn px-2.5 py-1.5 rounded-lg text-[11px] font-bold bg-rose-950/80 hover:bg-rose-900 border border-rose-600/40 text-rose-200 cursor-pointer">🇹🇷 Süper Lig (20)</button>
+          <button data-preset="premier" class="preset-btn px-2.5 py-1.5 rounded-lg text-[11px] font-bold bg-purple-950/80 hover:bg-purple-900 border border-purple-600/40 text-purple-200 cursor-pointer">🏴󠁧󠁢󠁥󠁮󠁧󠁿 Premier League (20)</button>
+          <button data-preset="laliga" class="preset-btn px-2.5 py-1.5 rounded-lg text-[11px] font-bold bg-amber-950/80 hover:bg-amber-900 border border-amber-600/40 text-amber-200 cursor-pointer">🇪🇸 La Liga (16)</button>
+          <button data-preset="seriea" class="preset-btn px-2.5 py-1.5 rounded-lg text-[11px] font-bold bg-blue-950/80 hover:bg-blue-900 border border-blue-600/40 text-blue-200 cursor-pointer">🇮🇹 Serie A (16)</button>
+          <button data-preset="bundesliga" class="preset-btn px-2.5 py-1.5 rounded-lg text-[11px] font-bold bg-red-950/80 hover:bg-red-900 border border-red-600/40 text-red-200 cursor-pointer">🇩🇪 Bundesliga (14)</button>
+          <button data-preset="worldcup" class="preset-btn px-2.5 py-1.5 rounded-lg text-[11px] font-bold bg-emerald-950/80 hover:bg-emerald-900 border border-emerald-600/40 text-emerald-200 cursor-pointer">🌍 Dünya Kupası (24)</button>
+          <button data-preset="super50" class="preset-btn px-2.5 py-1.5 rounded-lg text-[11px] font-bold bg-orange-950/80 hover:bg-orange-900 border border-orange-600/40 text-orange-200 cursor-pointer">🔥 Süper Karma (50 Dev)</button>
+          <button data-preset="mega" class="preset-btn px-2.5 py-1.5 rounded-lg text-[11px] font-bold bg-fuchsia-950/80 hover:bg-fuchsia-900 border border-fuchsia-500/50 text-fuchsia-200 cursor-pointer">💥 MEGA KAOS (Hepsi)</button>
+        </div>
+      </div>
+
+      <!-- KATEGORİ FİLTRE SEKMELERİ + HIZLI FİLTRE + TOPLU İŞLEMLER -->
+      <div class="px-4 sm:px-5 py-2.5 bg-slate-900/95 border-b border-slate-800 flex flex-col gap-2">
+        <div class="flex flex-wrap gap-1.5" id="categoryFilterBar">
+          <button data-cat="all" class="cat-tab px-2.5 py-1 rounded-lg text-[11px] font-bold bg-sky-600 text-white cursor-pointer">Tümü</button>
+          <button data-cat="superlig" class="cat-tab px-2.5 py-1 rounded-lg text-[11px] font-bold bg-slate-800 text-slate-300 hover:bg-slate-700 cursor-pointer">🇹🇷 Süper Lig</button>
+          <button data-cat="premier" class="cat-tab px-2.5 py-1 rounded-lg text-[11px] font-bold bg-slate-800 text-slate-300 hover:bg-slate-700 cursor-pointer">Premier League</button>
+          <button data-cat="laliga" class="cat-tab px-2.5 py-1 rounded-lg text-[11px] font-bold bg-slate-800 text-slate-300 hover:bg-slate-700 cursor-pointer">La Liga</button>
+          <button data-cat="seriea" class="cat-tab px-2.5 py-1 rounded-lg text-[11px] font-bold bg-slate-800 text-slate-300 hover:bg-slate-700 cursor-pointer">Serie A</button>
+          <button data-cat="bundesliga" class="cat-tab px-2.5 py-1 rounded-lg text-[11px] font-bold bg-slate-800 text-slate-300 hover:bg-slate-700 cursor-pointer">Bundesliga</button>
+          <button data-cat="europe" class="cat-tab px-2.5 py-1 rounded-lg text-[11px] font-bold bg-slate-800 text-slate-300 hover:bg-slate-700 cursor-pointer">Avrupa Devleri</button>
+          <button data-cat="world" class="cat-tab px-2.5 py-1 rounded-lg text-[11px] font-bold bg-slate-800 text-slate-300 hover:bg-slate-700 cursor-pointer">Dünya Devleri</button>
+          <button data-cat="national" class="cat-tab px-2.5 py-1 rounded-lg text-[11px] font-bold bg-slate-800 text-slate-300 hover:bg-slate-700 cursor-pointer">🌍 Milli Takımlar</button>
+          <button data-cat="custom" class="cat-tab px-2.5 py-1 rounded-lg text-[11px] font-bold bg-slate-800 text-emerald-300 hover:bg-slate-700 cursor-pointer">⭐ Özel</button>
+        </div>
+
+        <div class="flex flex-wrap items-center gap-2">
+          <input id="localTeamSearch" type="text" placeholder="Listede filtrele (ör. Galatasaray, Real, Türkiye...)"
+            class="flex-1 min-w-[180px] px-3 py-1.5 rounded-xl bg-slate-950/90 border border-slate-700 text-xs text-white focus:outline-none focus:border-sky-500" />
+          <button id="btnSelectAllVisible" type="button" class="px-2.5 py-1.5 rounded-lg text-[11px] font-bold bg-slate-800 hover:bg-slate-700 text-emerald-300 cursor-pointer">✓ Tümünü Seç</button>
+          <button id="btnClearAllClubs" type="button" class="px-2.5 py-1.5 rounded-lg text-[11px] font-bold bg-slate-800 hover:bg-slate-700 text-rose-300 cursor-pointer">✕ Temizle</button>
+          <button id="btnRandom36" type="button" class="px-2.5 py-1.5 rounded-lg text-[11px] font-bold bg-slate-800 hover:bg-slate-700 text-amber-300 cursor-pointer">🎲 Rastgele 36</button>
+        </div>
+      </div>
+
+      <!-- TAKIM LİSTESİ GRİDİ -->
+      <div id="clubGrid" class="p-3 sm:p-4 overflow-y-auto custom-scroll grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2 flex-1 min-h-[200px]"></div>
+
+      <!-- ALT BÖLÜM: MANUEL ÖZEL TAKIM EKLEME & UYGULA -->
+      <div class="px-4 sm:px-5 py-3 border-t border-slate-800 bg-slate-950/75 flex flex-col gap-2.5">
+        <div class="flex flex-wrap items-center gap-2">
+          <input id="manualTeamName" type="text" placeholder="Manuel Takım Adı" maxlength="24"
+            class="w-36 sm:w-44 px-3 py-2 rounded-xl bg-slate-900 border border-slate-700 text-xs text-white focus:outline-none focus:border-emerald-400" />
+          <input id="manualTeamUrl" type="url" placeholder="Logo Görsel URL'si (isteğe bağlı)"
+            class="flex-1 min-w-[160px] px-3 py-2 rounded-xl bg-slate-900 border border-slate-700 text-xs text-white focus:outline-none focus:border-emerald-400" />
+          <button id="btnAddManualTeam" type="button" class="px-3 py-2 rounded-xl text-xs font-bold bg-emerald-700 hover:bg-emerald-600 text-white cursor-pointer shrink-0">+ Ekle</button>
+          <label class="px-3 py-2 rounded-xl text-xs font-bold bg-slate-800 hover:bg-slate-700 border border-slate-700 text-emerald-300 cursor-pointer flex items-center gap-1 shrink-0">
+            <span>📁</span>
+            <span>Cihazdan PNG</span>
+            <input id="modalCustomLogoInput" type="file" accept="image/*" multiple class="hidden" />
+          </label>
+          <button id="btnApplyClubs" class="ml-auto px-5 py-2 rounded-xl font-black text-xs sm:text-sm bg-sky-600 hover:bg-sky-500 text-white cursor-pointer shrink-0">✓ Uygula & Güncelle</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Ana Stüdyo Kapsayıcı -->
+  <div class="max-w-7xl mx-auto px-3 sm:px-6 py-4">
+
+    <!-- Üst Stüdyo Başlığı -->
+    <header class="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3 mb-4 pb-4 border-b border-slate-800/80">
+      <div class="flex items-center gap-3">
+        <div class="w-11 h-11 rounded-2xl bg-gradient-to-br from-sky-500 via-blue-600 to-indigo-800 flex items-center justify-center shadow-lg shadow-blue-900/50 shrink-0 border border-sky-400/30">
+          <svg class="w-6 h-6 text-amber-300" fill="currentColor" viewBox="0 0 24 24">
+            <path d="M12 2l2.39 4.84 5.34.78-3.87 3.77.91 5.32L12 14.2l-4.77 2.51.91-5.32-3.87-3.77 5.34-.78L12 2z"/>
+          </svg>
+        </div>
+        <div>
+          <h1 class="text-base sm:text-xl font-black tracking-tight text-white">
+            FOOTBALL VIRAL ARENA STUDIO <span class="text-sky-400">— WHO SURVIVES?</span>
+          </h1>
+          <p class="text-xs text-slate-400">
+            4 Viral Oyun Modu • 9:16 Reels & TikTok Stüdyosu • Doğrudan MP4 / WebM İndirme
+          </p>
+        </div>
+      </div>
+
+      <div class="flex flex-wrap items-center gap-2">
+        <button id="btnShareLink" class="px-3 py-1.5 rounded-xl text-xs font-bold bg-indigo-600/25 hover:bg-indigo-600/40 border border-indigo-400/50 text-indigo-200 transition flex items-center gap-1.5 cursor-pointer">
+          <span>🔗</span>
+          <span>Ayarları Linkle Kopyala</span>
+        </button>
+        <div id="logoStatusPill" class="px-3 py-1.5 rounded-full text-xs font-semibold bg-slate-800/90 border border-slate-700 text-sky-300">
+          Logolar: 0/36 Yükleniyor...
+        </div>
+        <div id="encoderBadge" class="px-3 py-1.5 rounded-full text-xs font-semibold bg-slate-800/90 border border-slate-700 text-slate-300">
+          Motor Kontrol...
+        </div>
+      </div>
+    </header>
+
+    <!-- ÇOKLU MOD / SAYFA ÜST NAVİGASYON BARI -->
+    <nav aria-label="Oyun Modları" class="mb-5">
+      <div class="grid grid-cols-2 sm:grid-cols-5 gap-2">
+        <button data-mode="ring" class="mode-tab mode-tab-active px-3 py-2.5 rounded-2xl border border-slate-800 bg-slate-900/80 hover:bg-slate-800/90 text-left transition cursor-pointer flex items-center gap-2.5">
+          <span class="text-xl shrink-0">🌀</span>
+          <div class="min-w-0">
+            <div class="text-xs sm:text-sm font-extrabold truncate">Klasik Halka</div>
+            <div class="text-[10px] text-slate-400 truncate">Dönen Boşluk</div>
+          </div>
+        </button>
+
+        <button data-mode="bomb" class="mode-tab px-3 py-2.5 rounded-2xl border border-slate-800 bg-slate-900/80 hover:bg-slate-800/90 text-slate-300 text-left transition cursor-pointer flex items-center gap-2.5">
+          <span class="text-xl shrink-0">💣</span>
+          <div class="min-w-0">
+            <div class="text-xs sm:text-sm font-extrabold truncate">Saatli Bomba</div>
+            <div class="text-[10px] text-slate-400 truncate">Dokun & Devret</div>
+          </div>
+        </button>
+
+        <button data-mode="blade" class="mode-tab px-3 py-2.5 rounded-2xl border border-slate-800 bg-slate-900/80 hover:bg-slate-800/90 text-slate-300 text-left transition cursor-pointer flex items-center gap-2.5">
+          <span class="text-xl shrink-0">⚔️</span>
+          <div class="min-w-0">
+            <div class="text-xs sm:text-sm font-extrabold truncate">Kılıç Savaşı</div>
+            <div class="text-[10px] text-slate-400 truncate">3 Can • Düello</div>
+          </div>
+        </button>
+
+        <button data-mode="laser" class="mode-tab px-3 py-2.5 rounded-2xl border border-slate-800 bg-slate-900/80 hover:bg-slate-800/90 text-slate-300 text-left transition cursor-pointer flex items-center gap-2.5">
+          <span class="text-xl shrink-0">⚡</span>
+          <div class="min-w-0">
+            <div class="text-xs sm:text-sm font-extrabold truncate">Ölüm Lazeri</div>
+            <div class="text-[10px] text-slate-400 truncate">Dönen Işın • 2 Can</div>
+          </div>
+        </button>
+
+        <button id="btnNavClubs" class="col-span-2 sm:col-span-1 px-3 py-2.5 rounded-2xl border border-emerald-500/35 bg-emerald-950/35 hover:bg-emerald-900/45 text-emerald-200 text-left transition cursor-pointer flex items-center gap-2.5">
+          <span class="text-xl shrink-0">⚽</span>
+          <div class="min-w-0">
+            <div class="text-xs sm:text-sm font-extrabold truncate">Takımlar</div>
+            <div id="navClubsSub" class="text-[10px] text-emerald-300/80 truncate">36 Kulüp Aktif</div>
+          </div>
+        </button>
+      </div>
+    </nav>
+
+    <!-- İki Sütunlu Responsive Stüdyo -->
+    <div class="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+
+      <!-- SOL SÜTUN: 9:16 Canlı Önizleme + Render İlerleme Katmanı -->
+      <div class="lg:col-span-5 flex flex-col items-center lg:sticky lg:top-4">
+        <div class="stage-frame relative rounded-2xl p-1.5 bg-slate-900/90 w-full max-w-[390px]">
+          <canvas id="simCanvas" width="1080" height="1920"></canvas>
+
+          <!-- Video Oluşturma (Render) İlerleme Katmanı -->
+          <div id="renderOverlay" class="hidden absolute inset-1.5 rounded-[0.9rem] bg-slate-950/72 backdrop-blur-[2px] flex-col justify-end p-4 z-20">
+            <div class="bg-slate-900/95 border border-sky-500/45 rounded-2xl p-4 shadow-2xl">
+              <div class="flex items-center justify-between gap-2 mb-2">
+                <div class="flex items-center gap-2">
+                  <svg class="w-4 h-4 text-sky-400 spin-slow shrink-0" fill="none" viewBox="0 0 24 24">
+                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                    <path class="opacity-90" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"></path>
+                  </svg>
+                  <span id="renderStageTitle" class="text-xs font-extrabold text-white">Tam Video Oluşturuluyor...</span>
+                </div>
+                <span id="renderPercentText" class="text-xs font-mono font-black text-sky-400">0%</span>
+              </div>
+
+              <div class="w-full h-2.5 bg-slate-800 rounded-full overflow-hidden mb-3">
+                <div id="renderProgressBar" class="h-full bg-gradient-to-r from-sky-500 via-blue-500 to-emerald-400 rounded-full transition-all duration-150" style="width: 0%"></div>
+              </div>
+
+              <div class="grid grid-cols-3 gap-1.5 text-[11px] mb-3">
+                <div class="bg-slate-950/75 rounded-lg px-2 py-1.5 border border-slate-800">
+                  <span class="text-slate-400 block text-[10px]">Video Süresi</span>
+                  <strong id="renderDurationText" class="font-mono text-white text-xs">00:00</strong>
+                </div>
+                <div class="bg-slate-950/75 rounded-lg px-2 py-1.5 border border-slate-800">
+                  <span class="text-slate-400 block text-[10px]">Kalan Kulüp</span>
+                  <strong id="renderClubsText" class="font-mono text-amber-300 text-xs">36 / 36</strong>
+                </div>
+                <div class="bg-slate-950/75 rounded-lg px-2 py-1.5 border border-slate-800">
+                  <span class="text-slate-400 block text-[10px]">Render Hızı</span>
+                  <strong id="renderSpeedText" class="font-mono text-emerald-300 text-xs">1.0x</strong>
+                </div>
+              </div>
+
+              <button id="btnCancelRender" class="w-full py-2 rounded-xl text-xs font-bold bg-rose-600/20 hover:bg-rose-600/35 border border-rose-500/50 text-rose-200 transition cursor-pointer">
+                ✕ Oluşturmayı İptal Et
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Önizleme Kontrolleri -->
+        <div class="mt-3 w-full max-w-[390px] bg-slate-900/85 border border-slate-800 rounded-2xl p-3 flex flex-col gap-2">
+          <div class="flex items-center justify-between text-xs text-slate-400 px-0.5">
+            <span>Önizleme: <strong id="previewElapsed" class="font-mono text-sky-300">00:00</strong></span>
+            <span>Kalan: <strong id="previewRemaining" class="font-mono text-slate-200">36 / 36</strong></span>
+          </div>
+          <div class="grid grid-cols-2 gap-2">
+            <button id="btnPreviewToggle" class="py-2.5 px-3 rounded-xl font-bold text-xs sm:text-sm bg-slate-800 hover:bg-slate-700 border border-slate-700 text-white transition flex items-center justify-center gap-1.5 cursor-pointer">
+              <span id="previewIcon">▶</span>
+              <span id="previewLabel">Önizlemeyi Başlat</span>
+            </button>
+            <button id="btnPreviewReset" class="py-2.5 px-3 rounded-xl font-bold text-xs sm:text-sm bg-slate-800/70 hover:bg-slate-700 border border-slate-700/80 text-slate-300 transition flex items-center justify-center gap-1.5 cursor-pointer">
+              <span>↻</span>
+              <span>Sıfırla</span>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- SAĞ SÜTUN: Mod Ayarları, Tema & Viral Efektler, Tam Video İndirme -->
+      <div class="lg:col-span-7 flex flex-col gap-4">
+
+        <!-- KART 1: SEÇİLİ MODA ÖZEL VİRAL AYARLAR -->
+        <section class="bg-slate-900/85 backdrop-blur border border-slate-800 rounded-2xl p-4 sm:p-5 shadow-xl">
+          <div class="flex flex-wrap items-center justify-between gap-2 mb-3">
+            <h2 id="modePanelTitle" class="text-sm font-extrabold uppercase tracking-wider text-sky-400 flex items-center gap-2">
+              <span>🌀</span> Klasik Halka — Viral Mod Ayarları
+            </h2>
+            <span id="modePanelBadge" class="text-[11px] font-bold px-2.5 py-1 rounded-full bg-sky-950/80 text-sky-300 border border-sky-700/50">
+              Dönen Boşluk Fiziği
+            </span>
+          </div>
+
+          <!-- MOD 1 AYARLARI: KLASİK HALKA -->
+          <div id="panelModeRing" class="space-y-3">
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div class="bg-slate-950/55 rounded-xl p-3 border border-slate-800/80">
+                <div class="flex justify-between text-xs mb-2">
+                  <label for="sliderGap" class="font-semibold text-slate-300">Boşluk Genişliği</label>
+                  <span id="valGap" class="font-mono text-sky-400 font-bold">24°</span>
+                </div>
+                <input id="sliderGap" type="range" min="16" max="60" step="1" value="24" />
+              </div>
+
+              <div class="bg-slate-950/55 rounded-xl p-3 border border-slate-800/80">
+                <div class="flex justify-between text-xs mb-2">
+                  <label for="sliderRingSpeed" class="font-semibold text-slate-300">Halka Dönüş Hızı</label>
+                  <span id="valRingSpeed" class="font-mono text-sky-400 font-bold">1.15x</span>
+                </div>
+                <input id="sliderRingSpeed" type="range" min="0.4" max="2.6" step="0.05" value="1.15" />
+              </div>
+            </div>
+
+            <!-- Viral Halka Modifikatörleri -->
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              <label class="flex items-center justify-between gap-2 px-3 py-2.5 rounded-xl bg-slate-950/60 border border-slate-800 cursor-pointer hover:border-sky-500/40 transition">
+                <span class="text-xs font-semibold text-slate-200">⚡ Çift Boşluk (Double Gap)</span>
+                <input id="modDoubleGap" type="checkbox" class="w-4 h-4 accent-sky-500 cursor-pointer" />
+              </label>
+
+              <label class="flex items-center justify-between gap-2 px-3 py-2.5 rounded-xl bg-slate-950/60 border border-slate-800 cursor-pointer hover:border-sky-500/40 transition">
+                <span class="text-xs font-semibold text-slate-200">🎯 Daralan Halka (Shrinking)</span>
+                <input id="modShrinkingRing" type="checkbox" class="w-4 h-4 accent-sky-500 cursor-pointer" />
+              </label>
+
+              <label class="flex items-center justify-between gap-2 px-3 py-2.5 rounded-xl bg-slate-950/60 border border-slate-800 cursor-pointer hover:border-sky-500/40 transition">
+                <span class="text-xs font-semibold text-slate-200">🔥 Hızlanan Kaos (Escalation)</span>
+                <input id="modSpeedEscalation" type="checkbox" checked class="w-4 h-4 accent-sky-500 cursor-pointer" />
+              </label>
+
+              <label class="flex items-center justify-between gap-2 px-3 py-2.5 rounded-xl bg-slate-950/60 border border-slate-800 cursor-pointer hover:border-sky-500/40 transition">
+                <span class="text-xs font-semibold text-slate-200">📈 Büyüyen Hayatta Kalanlar</span>
+                <input id="modGrowSurvivor" type="checkbox" class="w-4 h-4 accent-sky-500 cursor-pointer" />
+              </label>
+            </div>
+          </div>
+
+          <!-- MOD 2 AYARLARI: SAATLİ BOMBA -->
+          <div id="panelModeBomb" class="hidden space-y-3">
+            <p class="text-xs text-slate-400 bg-slate-950/60 p-2.5 rounded-xl border border-slate-800">
+              Kapalı arenada bir takıma saatli bomba yapışır. Başka bir takıma değdiğinde bomba el değiştirir! Süre sıfırlandığında bombayı tutan takım alev topuyla patlayarak elenir.
+            </p>
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div class="bg-slate-950/55 rounded-xl p-3 border border-slate-800/80">
+                <div class="flex justify-between text-xs mb-2">
+                  <label for="sliderBombTimer" class="font-semibold text-slate-300">Bomba Geri Sayım Süresi</label>
+                  <span id="valBombTimer" class="font-mono text-amber-400 font-bold">3.5 sn</span>
+                </div>
+                <input id="sliderBombTimer" type="range" min="2.5" max="5.0" step="0.1" value="3.5" />
+              </div>
+
+              <div class="bg-slate-950/55 rounded-xl p-3 border border-slate-800/80">
+                <div class="flex justify-between text-xs mb-2">
+                  <label for="sliderBombChaos" class="font-semibold text-slate-300">Arena Çarpışma Enerjisi</label>
+                  <span id="valBombChaos" class="font-mono text-amber-400 font-bold">1.15x</span>
+                </div>
+                <input id="sliderBombChaos" type="range" min="0.8" max="1.8" step="0.05" value="1.15" />
+              </div>
+            </div>
+          </div>
+
+          <!-- MOD 3 AYARLARI: KILIÇ SAVAŞI -->
+          <div id="panelModeBlade" class="hidden space-y-3">
+            <p class="text-xs text-slate-400 bg-slate-950/60 p-2.5 rounded-xl border border-slate-800">
+              Her kulübün <strong>3 Canı</strong> ve etrafında dönen bir enerji kılıcı vardır. Kılıçlar çarpışınca kıvılcım çıkarıp yön değiştirir; rakibin gövdesine isabet eden kılıç 1 hasar verir!
+            </p>
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div class="bg-slate-950/55 rounded-xl p-3 border border-slate-800/80">
+                <div class="flex justify-between text-xs mb-2">
+                  <label for="sliderBladeSpeed" class="font-semibold text-slate-300">Kılıç Dönüş Hızı</label>
+                  <span id="valBladeSpeed" class="font-mono text-rose-400 font-bold">1.20x</span>
+                </div>
+                <input id="sliderBladeSpeed" type="range" min="0.6" max="2.2" step="0.05" value="1.20" />
+              </div>
+
+              <div class="bg-slate-950/55 rounded-xl p-3 border border-slate-800/80">
+                <div class="flex justify-between text-xs mb-2">
+                  <label for="sliderBladeLen" class="font-semibold text-slate-300">Kılıç Uzunluğu</label>
+                  <span id="valBladeLen" class="font-mono text-rose-400 font-bold">48 px</span>
+                </div>
+                <input id="sliderBladeLen" type="range" min="34" max="66" step="2" value="48" />
+              </div>
+            </div>
+          </div>
+
+          <!-- MOD 4 AYARLARI: ÖLÜM LAZERİ -->
+          <div id="panelModeLaser" class="hidden space-y-3">
+            <p class="text-xs text-slate-400 bg-slate-950/60 p-2.5 rounded-xl border border-slate-800">
+              Merkezden dönen ölümcül neon lazer ışınları arenayı tarar! Her kulübün <strong>2 Canı</strong> vardır (Mavi kalkan → Turuncu çatlak → Elendi).
+            </p>
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div class="bg-slate-950/55 rounded-xl p-3 border border-slate-800/80">
+                <div class="flex justify-between text-xs mb-2">
+                  <label for="sliderLaserSpeed" class="font-semibold text-slate-300">Lazer Dönüş Hızı</label>
+                  <span id="valLaserSpeed" class="font-mono text-cyan-400 font-bold">1.15x</span>
+                </div>
+                <input id="sliderLaserSpeed" type="range" min="0.5" max="2.4" step="0.05" value="1.15" />
+              </div>
+
+              <div class="bg-slate-950/55 rounded-xl p-3 border border-slate-800/80">
+                <label for="selectLaserCount" class="block text-xs font-semibold text-slate-300 mb-1.5">Lazer Işını Sayısı</label>
+                <select id="selectLaserCount" class="w-full px-3 py-1.5 rounded-lg bg-slate-900 border border-slate-700 text-xs font-bold text-white cursor-pointer">
+                  <option value="1">1 Ölüm Lazeri (Uzun Video)</option>
+                  <option value="2" selected>2 Karşılıklı Lazer (Hızlı Kaos)</option>
+                </select>
+              </div>
+            </div>
+          </div>
+
+          <!-- ORTAK FİZİK & VİRAL HIZ AYARLARI -->
+          <div class="grid grid-cols-1 sm:grid-cols-3 gap-2.5 mt-3 pt-3 border-t border-slate-800/80">
+            <div class="bg-slate-950/55 rounded-xl p-2.5 border border-slate-800/80">
+              <div class="flex justify-between text-xs mb-1.5">
+                <label for="sliderSimSpeed" class="font-semibold text-slate-300">Genel Hız</label>
+                <span id="valSimSpeed" class="font-mono text-sky-400 font-bold">1.00x</span>
+              </div>
+              <input id="sliderSimSpeed" type="range" min="0.6" max="2.0" step="0.05" value="1.00" />
+            </div>
+
+            <div class="bg-slate-950/55 rounded-xl p-2.5 border border-slate-800/80">
+              <div class="flex justify-between text-xs mb-1.5">
+                <label for="sliderGravity" class="font-semibold text-slate-300">Yerçekimi</label>
+                <span id="valGravity" class="font-mono text-sky-400 font-bold">1.00x</span>
+              </div>
+              <input id="sliderGravity" type="range" min="0.25" max="1.6" step="0.05" value="1.00" />
+            </div>
+
+            <div class="bg-slate-950/55 rounded-xl p-2.5 border border-slate-800/80">
+              <div class="flex justify-between text-xs mb-1.5">
+                <label for="sliderLogoSize" class="font-semibold text-slate-300">Logo Boyutu</label>
+                <span id="valLogoSize" class="font-mono text-sky-400 font-bold">37 px</span>
+              </div>
+              <input id="sliderLogoSize" type="range" min="28" max="48" step="1" value="37" />
+            </div>
+          </div>
+        </section>
+
+        <!-- KART 2: 🏆 ŞAMPİYON SEÇİMİ, TEMA & VİRAL METİNLER -->
+        <section class="bg-slate-900/85 backdrop-blur border border-slate-800 rounded-2xl p-4 sm:p-5 shadow-xl">
+          <div class="flex flex-wrap items-center justify-between gap-2 mb-3">
+            <h2 class="text-sm font-extrabold uppercase tracking-wider text-amber-400 flex items-center gap-2">
+              <span>🏆</span> Şampiyon, Tema & Viral Efektler
+            </h2>
+            <div class="flex items-center gap-2">
+              <label class="px-2.5 py-1 rounded-lg text-[11px] font-bold bg-slate-800 hover:bg-slate-700 border border-slate-700 text-amber-300 cursor-pointer">
+                🏆 Özel Kupa PNG
+                <input id="customTrophyInput" type="file" accept="image/*" class="hidden" />
+              </label>
+              <button id="btnResetTrophy" title="Varsayılan Kupaya Dön" class="hidden px-2 py-1 rounded-lg text-[11px] font-bold bg-rose-950 hover:bg-rose-900 border border-rose-700/60 text-rose-200 cursor-pointer">✕</button>
+            </div>
+          </div>
+
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
+            <!-- Kazanan Takım Seçici -->
+            <div>
+              <label for="selectWinner" class="block text-xs font-bold text-slate-300 mb-1">🏆 Kazanan Takımı Seç (Şampiyon)</label>
+              <select id="selectWinner" class="w-full px-3 py-2.5 rounded-xl bg-slate-950/90 border border-amber-500/45 text-xs sm:text-sm font-semibold text-white focus:outline-none focus:border-amber-400 cursor-pointer">
+                <option value="random">🎲 Rastgele (Doğal Fizik)</option>
+              </select>
+            </div>
+
+            <!-- Stüdyo Teması -->
+            <div>
+              <label for="selectTheme" class="block text-xs font-bold text-slate-300 mb-1">🎨 Arena Teması</label>
+              <select id="selectTheme" class="w-full px-3 py-2.5 rounded-xl bg-slate-950/90 border border-slate-700 text-xs sm:text-sm font-semibold text-white focus:outline-none focus:border-sky-500 cursor-pointer">
+                <option value="ucl">🌌 UEFA Champions League (Gümüş Kupa)</option>
+                <option value="superlig">🇹🇷 Süper Lig / Derbi Ateşi (Altın Kupa)</option>
+                <option value="europa">🔥 Europa League (Turuncu Alev)</option>
+                <option value="worldcup">🏆 Dünya Kupası / Altın Arena</option>
+              </select>
+            </div>
+          </div>
+
+          <!-- Başlık & Viral Etkileşim Kancası -->
+          <div class="grid grid-cols-1 sm:grid-cols-3 gap-2.5 mb-3">
+            <div>
+              <label for="inputSubTitle" class="block text-[11px] font-semibold text-slate-400 mb-1">Üst Başlık</label>
+              <input id="inputSubTitle" type="text" value="UEFA CHAMPIONS LEAGUE" maxlength="42"
+                class="w-full px-3 py-2 rounded-xl bg-slate-950/80 border border-slate-700 text-xs sm:text-sm text-white focus:outline-none focus:border-sky-500" />
+            </div>
+            <div>
+              <label for="inputMainTitle" class="block text-[11px] font-semibold text-slate-400 mb-1">Ana Başlık</label>
+              <input id="inputMainTitle" type="text" value="WHO SURVIVES?" maxlength="30"
+                class="w-full px-3 py-2 rounded-xl bg-slate-950/80 border border-slate-700 text-xs sm:text-sm text-white focus:outline-none focus:border-sky-500" />
+            </div>
+            <div>
+              <label for="inputWatermark" class="block text-[11px] font-semibold text-slate-400 mb-1">Filigran (@hesap)</label>
+              <input id="inputWatermark" type="text" value="" placeholder="@kullaniciadi" maxlength="28"
+                class="w-full px-3 py-2 rounded-xl bg-slate-950/80 border border-slate-700 text-xs sm:text-sm text-sky-300 placeholder-slate-500 focus:outline-none focus:border-sky-500" />
+            </div>
+          </div>
+
+          <div class="mb-3">
+            <div class="flex items-center justify-between mb-1">
+              <label for="inputViralHook" class="text-[11px] font-semibold text-slate-400">Alt Viral Etkileşim Yazısı (Yorum Kancası)</label>
+              <label class="inline-flex items-center gap-1.5 text-[11px] font-semibold text-slate-300 cursor-pointer">
+                <input id="toggleViralHook" type="checkbox" checked class="w-3.5 h-3.5 accent-amber-400 cursor-pointer" />
+                <span>Göster</span>
+              </label>
+            </div>
+            <input id="inputViralHook" type="text" value="SONA KALAN SENİN TAKIMIN MI? YORUMA YAZ! 👇" maxlength="64"
+              class="w-full px-3 py-2 rounded-xl bg-slate-950/80 border border-slate-700 text-xs sm:text-sm text-amber-200 focus:outline-none focus:border-amber-400" />
+          </div>
+
+          <!-- Son 2 Ağır Çekim & Ses Efektleri -->
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+            <label class="flex items-center justify-between gap-2 px-3 py-2.5 rounded-xl bg-slate-950/60 border border-amber-500/30 cursor-pointer">
+              <span class="text-xs font-bold text-amber-200">🎬 Son 2 Ağır Çekim (Slow-Mo)</span>
+              <input id="toggleSlowMo" type="checkbox" checked class="w-4 h-4 accent-amber-400 cursor-pointer" />
+            </label>
+
+            <label class="flex items-center justify-between gap-2 px-3 py-2.5 rounded-xl bg-slate-950/60 border border-slate-800 cursor-pointer">
+              <span class="text-xs font-bold text-slate-200">🔊 Ses Efektleri (Videoya Dahil)</span>
+              <input id="toggleAudio" type="checkbox" checked class="w-4 h-4 accent-sky-500 cursor-pointer" />
+            </label>
+          </div>
+        </section>
+
+        <!-- KART 3: 🎬 TAM VİDEO OLUŞTUR VE İNDİR (HER ZAMAN AKTİF) -->
+        <section class="bg-slate-900/92 backdrop-blur border border-emerald-500/40 rounded-2xl p-4 sm:p-5 shadow-2xl">
+          <h2 class="text-sm font-extrabold uppercase tracking-wider text-emerald-400 flex items-center gap-2 mb-3">
+            <span>🎬</span> Tam Video Dışa Aktarma & İndirme
+          </h2>
+
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4">
+            <div>
+              <label for="selectFormat" class="block text-xs font-bold text-slate-300 mb-1">İndirme Uzantısı</label>
+              <select id="selectFormat" class="w-full px-3 py-2.5 rounded-xl bg-slate-950/90 border border-slate-700 text-xs sm:text-sm font-semibold text-white focus:outline-none focus:border-emerald-500 cursor-pointer">
+                <option value="mp4">.mp4 (H.264 + AAC — Reels & TikTok Önerilen)</option>
+                <option value="webm">.webm (VP9/VP8 — Tarayıcı Yedek)</option>
+              </select>
+            </div>
+
+            <div>
+              <label for="selectQuality" class="block text-xs font-bold text-slate-300 mb-1">Çözünürlük & FPS</label>
+              <select id="selectQuality" class="w-full px-3 py-2.5 rounded-xl bg-slate-950/90 border border-slate-700 text-xs sm:text-sm font-semibold text-white focus:outline-none focus:border-emerald-500 cursor-pointer">
+                <option value="1080x1920@30" selected>1080×1920 (30 FPS — Reels/TikTok Önerilen)</option>
+                <option value="1080x1920@60">1080×1920 (60 FPS — Ultra Akıcı)</option>
+                <option value="720x1280@30">720×1280 (30 FPS — Hızlı)</option>
+              </select>
+            </div>
+          </div>
+
+          <button id="btnGenerateDownload" class="w-full py-4 px-5 rounded-xl font-black text-sm sm:text-base text-white bg-gradient-to-r from-emerald-500 via-sky-500 to-indigo-600 hover:from-emerald-400 hover:via-sky-400 hover:to-indigo-500 active:scale-[0.99] disabled:opacity-50 disabled:cursor-not-allowed transition shadow-xl shadow-sky-900/40 flex items-center justify-center gap-2.5 cursor-pointer">
+            <span class="text-xl">📥</span>
+            <span id="generateBtnLabel">Tam Videoyu Oluştur ve İndir</span>
+          </button>
+
+          <button id="btnRedownload" class="hidden mt-3 w-full py-3 px-4 rounded-xl font-bold text-xs sm:text-sm bg-emerald-600/20 hover:bg-emerald-600/30 border border-emerald-500/50 text-emerald-300 transition items-center justify-center gap-2 cursor-pointer">
+            <span>💾</span>
+            <span id="redownloadLabel">Son Videoyu Tekrar İndir</span>
+          </button>
+
+          <p class="mt-3 text-[11px] text-slate-400 leading-relaxed bg-slate-950/65 rounded-xl p-2.5 border border-slate-800/80">
+            Önizlemeyi başlatmanıza gerek yoktur. <strong>"Tam Videoyu Oluştur ve İndir"</strong> butonuna bastığınızda seçtiğiniz mod, tema ve şampiyon ayarıyla ilk kareden kutlama sonuna (+3.5 sn) kadar videonun tamamı oluşturulup otomatik indirilir.
+          </p>
+        </section>
+
+      </div>
+    </div>
+  </div>
+
+  <script src="js/app-1.js"></script>
+  <script src="js/app-2.js"></script>
+  <script src="js/app-3.js"></script>
+  <script src="js/app-4.js"></script>
+  <script src="js/app-5.js"></script>
+</body>
+</html>
