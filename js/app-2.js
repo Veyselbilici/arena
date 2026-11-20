@@ -67,6 +67,7 @@
       const sliderSpin = document.getElementById("sliderSpin");
       const valSpin = document.getElementById("valSpin");
       const toggleLeagueLogo = document.getElementById("toggleLeagueLogo");
+      const selectDuration = document.getElementById("selectDuration");
       const valLogoSize = document.getElementById("valLogoSize");
 
       const selectWinner = document.getElementById("selectWinner");
@@ -112,6 +113,7 @@
 
         // Bomb mode
         bombTimer: 3.5,
+        targetDuration: 60,
         bombChaos: 1.15,
 
         // Blade mode
