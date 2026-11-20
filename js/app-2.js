@@ -119,7 +119,7 @@
         targetDuration: 60,
         match: { homeKey: null, awayKey: null, goals: [], cards: [], title: "CHAMPIONS LEAGUE", city: "IN ISTANBUL", footer: "", scripted: true, showCards: true },
         matchGoalWidth: 46,
-        matchGoalSpeed: 0.45,
+        matchGoalSpeed: 0.8,
         bombChaos: 1.15,
 
         // Blade mode
