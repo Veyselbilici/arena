@@ -158,7 +158,7 @@
 
     <!-- ÇOKLU MOD / SAYFA ÜST NAVİGASYON BARI -->
     <nav aria-label="Oyun Modları" class="mb-4 sm:mb-5 -mx-3 sm:mx-0">
-      <div class="mode-strip flex sm:grid sm:grid-cols-5 gap-2 overflow-x-auto px-3 sm:px-0 pb-1 snap-x">
+      <div class="mode-strip flex sm:grid sm:grid-cols-3 lg:grid-cols-6 gap-2 overflow-x-auto px-3 sm:px-0 pb-1 snap-x">
         <button data-mode="ring" class="mode-tab press shrink-0 snap-start min-w-[150px] sm:min-w-0 mode-tab-active px-3 py-2.5 rounded-2xl border border-slate-800 bg-slate-900/80 hover:bg-slate-800/90 text-left transition cursor-pointer flex items-center gap-2.5">
           <span class="text-xl shrink-0">🌀</span>
           <div class="min-w-0">
@@ -188,6 +188,14 @@
           <div class="min-w-0">
             <div class="text-xs sm:text-sm font-extrabold truncate">Ölüm Lazeri</div>
             <div class="text-[10px] text-slate-400 truncate">Dönen Işın • 2 Can</div>
+          </div>
+        </button>
+
+        <button data-mode="match" class="mode-tab press shrink-0 snap-start min-w-[150px] sm:min-w-0 px-3 py-2.5 rounded-2xl border border-slate-800 bg-slate-900/80 hover:bg-slate-800/90 text-slate-300 text-left transition cursor-pointer flex items-center gap-2.5">
+          <span class="text-xl shrink-0">🥅</span>
+          <div class="min-w-0">
+            <div class="text-xs sm:text-sm font-extrabold truncate">Maç Modu <span class="ml-1 align-middle text-[9px] font-black px-1.5 py-0.5 rounded bg-rose-600 text-white">YENİ</span></div>
+            <div class="text-[10px] text-slate-400 truncate">Gerçek Maç • Skor & Gol</div>
           </div>
         </button>
 
@@ -375,6 +383,97 @@
           </div>
 
           <!-- MOD 4 AYARLARI: ÖLÜM LAZERİ -->
+          <div id="panelModeMatch" class="hidden space-y-3">
+            <!-- ESPN'den gerçek maç -->
+            <div class="rounded-2xl border border-slate-800 bg-slate-950/55 p-3">
+              <div class="flex items-center justify-between gap-2 mb-2">
+                <span class="text-[11px] font-black uppercase tracking-wider text-slate-300">Gerçek maçı getir</span>
+                <span class="text-[10px] text-slate-500">Skor, golcüler ve dakikalar otomatik</span>
+              </div>
+              <div class="grid grid-cols-1 sm:grid-cols-[1.4fr_1fr_auto] gap-2">
+                <select id="matchLeague" class="px-3 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-sm font-semibold text-white focus:outline-none focus:border-sky-500 cursor-pointer"></select>
+                <input id="matchDate" type="date" class="px-3 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-sm font-semibold text-white focus:outline-none focus:border-sky-500" />
+                <button id="btnMatchFetch" type="button" class="press px-4 py-2.5 rounded-xl text-sm font-black bg-sky-600 hover:bg-sky-500 text-white cursor-pointer">Maçları göster</button>
+              </div>
+              <div class="flex gap-1.5 mt-2 chip-row overflow-x-auto">
+                <button type="button" data-day="-1" class="match-day chip">Dün</button>
+                <button type="button" data-day="0" class="match-day chip">Bugün</button>
+                <button type="button" data-day="-2" class="match-day chip">2 gün önce</button>
+                <button type="button" data-day="-7" class="match-day chip">1 hafta önce</button>
+              </div>
+              <p id="matchFetchStatus" class="text-[11px] text-slate-400 mt-2 min-h-[1rem]"></p>
+              <div id="matchList" class="grid grid-cols-1 gap-1.5 max-h-72 overflow-y-auto custom-scroll"></div>
+            </div>
+
+            <!-- Maç kartı -->
+            <div class="rounded-2xl border border-slate-800 bg-slate-950/55 p-3 space-y-2.5">
+              <div class="grid grid-cols-[1fr_auto_1fr] items-end gap-2">
+                <div>
+                  <label for="matchHome" class="block text-[11px] font-bold text-slate-400 mb-1">Ev sahibi</label>
+                  <select id="matchHome" class="w-full px-2.5 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-sm font-bold text-white cursor-pointer"></select>
+                </div>
+                <div id="matchScorePreview" class="px-3 py-2 rounded-xl bg-rose-600 text-white font-black text-lg tabular-nums">0 - 0</div>
+                <div>
+                  <label for="matchAway" class="block text-[11px] font-bold text-slate-400 mb-1 text-right">Deplasman</label>
+                  <select id="matchAway" class="w-full px-2.5 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-sm font-bold text-white cursor-pointer"></select>
+                </div>
+              </div>
+              <div class="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                <div>
+                  <label for="matchTitle" class="block text-[11px] font-bold text-slate-400 mb-1">Turnuva</label>
+                  <input id="matchTitle" type="text" maxlength="34" value="CHAMPIONS LEAGUE" class="w-full px-2.5 py-2 rounded-xl bg-slate-900 border border-slate-700 text-xs font-bold text-white" />
+                </div>
+                <div>
+                  <label for="matchCity" class="block text-[11px] font-bold text-slate-400 mb-1">Şehir satırı</label>
+                  <input id="matchCity" type="text" maxlength="30" value="IN ISTANBUL" class="w-full px-2.5 py-2 rounded-xl bg-slate-900 border border-slate-700 text-xs font-bold text-white" />
+                </div>
+                <div>
+                  <label for="matchFooter" class="block text-[11px] font-bold text-slate-400 mb-1">Alt bilgi</label>
+                  <input id="matchFooter" type="text" maxlength="44" value="" placeholder="LEAGUE PHASE · 4 NOVEMBER 2026" class="w-full px-2.5 py-2 rounded-xl bg-slate-900 border border-slate-700 text-xs font-bold text-white" />
+                </div>
+              </div>
+            </div>
+
+            <!-- Goller -->
+            <div class="rounded-2xl border border-slate-800 bg-slate-950/55 p-3">
+              <div class="flex items-center justify-between gap-2 mb-2">
+                <span class="text-[11px] font-black uppercase tracking-wider text-slate-300">Goller</span>
+                <div class="flex gap-1.5">
+                  <button id="btnGoalAddHome" type="button" class="chip">+ Ev sahibi golü</button>
+                  <button id="btnGoalAddAway" type="button" class="chip">+ Deplasman golü</button>
+                </div>
+              </div>
+              <div id="goalList" class="space-y-1.5"></div>
+              <p id="goalEmpty" class="text-[11px] text-slate-500">Gol yok. Gerçek maçı getir ya da gol ekle. Gol eklemezsen sonucu fizik belirler.</p>
+            </div>
+
+            <!-- Oyun ayarları -->
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              <label class="flex items-center justify-between gap-2 px-3 py-2.5 rounded-xl bg-slate-950/60 border border-slate-800 cursor-pointer">
+                <span class="text-xs font-semibold text-slate-200">Gerçek skoru canlandır <span class="text-slate-500 font-normal">(kapalıysa fizik belirler)</span></span>
+                <input id="matchScripted" type="checkbox" checked class="w-4 h-4 accent-sky-500 cursor-pointer" />
+              </label>
+              <label class="flex items-center justify-between gap-2 px-3 py-2.5 rounded-xl bg-slate-950/60 border border-slate-800 cursor-pointer">
+                <span class="text-xs font-semibold text-slate-200">Sarı / kırmızı kartları göster</span>
+                <input id="matchCards" type="checkbox" checked class="w-4 h-4 accent-sky-500 cursor-pointer" />
+              </label>
+              <div class="bg-slate-950/55 rounded-xl p-2.5 border border-slate-800/80">
+                <div class="flex justify-between text-xs mb-1.5">
+                  <label for="sliderGoalWidth" class="font-semibold text-slate-300">Kale genişliği</label>
+                  <span id="valGoalWidth" class="font-mono text-sky-400 font-bold">46°</span>
+                </div>
+                <input id="sliderGoalWidth" type="range" min="34" max="70" step="1" value="46" />
+              </div>
+              <div class="bg-slate-950/55 rounded-xl p-2.5 border border-slate-800/80">
+                <div class="flex justify-between text-xs mb-1.5">
+                  <label for="sliderGoalSpeed" class="font-semibold text-slate-300">Kale dönüş hızı</label>
+                  <span id="valGoalSpeed" class="font-mono text-sky-400 font-bold">0.45x</span>
+                </div>
+                <input id="sliderGoalSpeed" type="range" min="0" max="1.5" step="0.05" value="0.45" />
+              </div>
+            </div>
+          </div>
+
           <div id="panelModeLaser" class="hidden space-y-3">
             <p class="text-xs text-slate-400 bg-slate-950/60 p-2.5 rounded-xl border border-slate-800">
               Merkezden dönen ölümcül neon lazer ışınları arenayı tarar! Her kulübün <strong>2 Canı</strong> vardır (Mavi kalkan → Turuncu çatlak → Elendi).
@@ -596,11 +695,13 @@
     </div>
   </div>
 
-  <script src="js/app-1.js?v=74682945"></script>
-  <script src="js/app-2.js?v=9c78c325"></script>
-  <script src="js/app-3.js?v=5beca799"></script>
-  <script src="js/app-4.js?v=c1a23a6b"></script>
-  <script src="js/app-5.js?v=b050e2cc"></script>
-  <script src="js/app-6.js?v=99b7dc97"></script>
+  <script src="js/app-1.js?v=f5d130e2"></script>
+  <script src="js/app-2.js?v=9c792ef3"></script>
+  <script src="js/app-3.js?v=6964e014"></script>
+  <script src="js/app-4.js?v=7d8e8a4c"></script>
+  <script src="js/app-5.js?v=b45f30c8"></script>
+  <script src="js/app-6.js?v=9cba34cf"></script>
+  <script src="js/app-7.js?v=9706a10a"></script>
+  <script src="js/app-8.js?v=55f4de7b"></script>
 </body>
 </html>
