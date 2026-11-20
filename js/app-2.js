@@ -1,7 +1,4 @@
 "use strict";
-      const btnCancelRender = document.getElementById("btnCancelRender");
-
-      // Preview controls
       const previewElapsedEl = document.getElementById("previewElapsed");
       const previewRemainingEl = document.getElementById("previewRemaining");
       const btnPreviewToggle = document.getElementById("btnPreviewToggle");
