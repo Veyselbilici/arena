@@ -340,9 +340,9 @@
         const loaded = active.filter((c) => c.realLoaded).length;
         logoStatusPill.textContent = `Logolar: ${loaded}/${active.length} Hazır (${allClubs.length} Toplam)`;
         if (loaded === active.length && active.length > 0) {
-          logoStatusPill.className = "px-3 py-1.5 rounded-full text-xs font-semibold bg-emerald-950/90 border border-emerald-600/60 text-emerald-300";
+          logoStatusPill.className = "hidden sm:block px-3 py-1.5 rounded-full text-xs font-semibold bg-emerald-950/90 border border-emerald-600/60 text-emerald-300";
         } else {
-          logoStatusPill.className = "px-3 py-1.5 rounded-full text-xs font-semibold bg-slate-800/90 border border-slate-700 text-sky-300";
+          logoStatusPill.className = "hidden sm:block px-3 py-1.5 rounded-full text-xs font-semibold bg-slate-800/90 border border-slate-700 text-sky-300";
         }
       }
 
