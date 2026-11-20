@@ -82,16 +82,9 @@
             const logos = l.logos || [];
             const pick = logos.find((x) => (x.rel || []).includes("dark")) || logos[0];
             if (!pick) return;
-            const img = new Image();
-            img.crossOrigin = "anonymous";
-            img.onload = () => {
-              try {
-                const t = document.createElement("canvas"); t.width = t.height = 2;
-                t.getContext("2d").drawImage(img, 0, 0, 2, 2); t.getContext("2d").getImageData(0, 0, 1, 1);
-                leagueLogoCache[slug] = { ready: true, img };
-              } catch (_) {}
-            };
-            img.src = pick.href.replace(/^http:/, "https:");
+            loadImageWithMirrors(pick.href.replace(/^http:/, "https:"), (img) => {
+              leagueLogoCache[slug] = { ready: true, img };
+            });
           })
           .catch(() => {});
         return null;
