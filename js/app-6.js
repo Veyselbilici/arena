@@ -31,7 +31,8 @@
           setSub("50 WORLD GIANTS ARENA");
           setTheme("league", false);
         } else if (presetKey === "mega") {
-          allClubs.forEach((c) => (c.enabled = builtin(c)));
+          const live = allClubs.filter((c) => c.espnId || (c.tags || []).some((t) => leagueCache[t]) || c.custom);
+          (live.length >= 2 ? live : allClubs).forEach((c) => (c.enabled = true));
           setSub(`MEGA CHAOS • ${selectedCount()} TEAMS`);
         }
 
@@ -60,7 +61,7 @@
       function renderCategoryBar() {
         const cats = [["selected", `Seçili (${selectedCount()})`], ["all", "Tümü"]];
         loadedLeagueOrder.forEach((slug) => cats.push([slug, leagueLabels[slug] || slug]));
-        Object.entries(BUILTIN_CAT_LABELS).forEach(([k, v]) => cats.push([k, v]));
+
         if (allClubs.some((c) => c.custom)) cats.push(["custom", "Özel"]);
         categoryFilterBar.innerHTML = cats.map(([k, v]) =>
           `<button type="button" data-cat="${k}" class="chip ${k === activeModalCategory ? "is-active" : ""}">${escapeHtml(v)}</button>`
@@ -257,15 +258,21 @@
 
       // Modal
       btnNavClubs.addEventListener("click", openClubModal);
-      btnCloseClubModal.addEventListener("click", closeClubModal);
-      clubModal.addEventListener("click", (e) => { if (e.target === clubModal) closeClubModal(); });
-      document.addEventListener("keydown", (e) => { if (e.key === "Escape" && !clubModal.classList.contains("hidden")) closeClubModal(); });
+      btnCloseClubModal.addEventListener("click", () => btnApplyClubs.click());
+      clubModal.addEventListener("click", (e) => { if (e.target === clubModal) btnApplyClubs.click(); });
+      document.addEventListener("keydown", (e) => { if (e.key === "Escape" && !clubModal.classList.contains("hidden")) btnApplyClubs.click(); });
 
       presetBtns.forEach((btn) => {
         btn.addEventListener("click", () => applyLeaguePreset(btn.dataset.preset));
       });
 
       btnLeagueOnly.addEventListener("click", () => applyEspnLeague(leagueSelect.value, "only"));
+      leagueSelect.addEventListener("change", () => applyEspnLeague(leagueSelect.value, "only"));
+      document.querySelectorAll(".league-chip").forEach((btn) => btn.addEventListener("click", () => {
+        leagueSelect.value = btn.dataset.league;
+        applyEspnLeague(btn.dataset.league, "only");
+        document.getElementById("modalScroll").scrollTo({ top: categoryFilterBar.closest("div.border-b").offsetTop - 8, behavior: "smooth" });
+      }));
       btnLeagueAdd.addEventListener("click", () => applyEspnLeague(leagueSelect.value, "add"));
       btnLoadAllLeagues.addEventListener("click", loadAllLeagueNames);
 
