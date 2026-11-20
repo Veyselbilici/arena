@@ -118,6 +118,36 @@
             prof.fanfare.slice(0, 3).forEach((f, i) => tone(prof.wave, f, 0, 0.12, 0.75, t + i * 0.08, 2600));
             crowd(1.2, 0.05 * prof.crowd, t);
             if (prof.drums) [0, 0.24, 0.48].forEach((d) => kick(t + d));
+          } else if (ev.type === "whistle") {
+            // Hakem düdüğü: iki yakın frekans + titreşim
+            const blasts = ev.triple ? [0, 0.42, 0.84] : [0];
+            blasts.forEach((off, bi) => {
+              const dur = ev.short ? 0.18 : ev.long && (bi === blasts.length - 1 || !ev.triple) ? 0.7 : 0.3;
+              [2950, 3120].forEach((f) => {
+                const osc = ac.createOscillator();
+                const lfo = ac.createOscillator();
+                const lfoG = ac.createGain();
+                const g = ac.createGain();
+                osc.type = "sine";
+                osc.frequency.setValueAtTime(f, t + off);
+                lfo.frequency.setValueAtTime(34, t + off);
+                lfoG.gain.setValueAtTime(70, t + off);
+                lfo.connect(lfoG); lfoG.connect(osc.frequency);
+                g.gain.setValueAtTime(0.0001, t + off);
+                g.gain.exponentialRampToValueAtTime(0.07, t + off + 0.02);
+                g.gain.setValueAtTime(0.07, t + off + dur - 0.05);
+                g.gain.exponentialRampToValueAtTime(0.0005, t + off + dur);
+                osc.connect(g); g.connect(dest);
+                osc.start(t + off); lfo.start(t + off);
+                osc.stop(t + off + dur + 0.02); lfo.stop(t + off + dur + 0.02);
+              });
+            });
+          } else if (ev.type === "goal") {
+            crowd(3.0, 0.16 + 0.06 * prof.crowd, t);
+            noise(0.5, 0.12, "lowpass", 600, 120, t);
+            tone("sine", 120, 45, 0.3, 0.35, t);
+            prof.fanfare.slice(0, 4).forEach((f, i) => tone(prof.brass, f, 0, 0.09, 0.9, t + 0.12 + i * 0.07, 2400));
+            if (prof.drums) [0.1, 0.32, 0.54, 0.76].forEach((d, i) => (i % 2 ? snare(t + d) : kick(t + d)));
           } else if (ev.type === "victory") {
             prof.fanfare.forEach((f, i) => {
               const st = t + i * 0.09;
@@ -173,658 +203,723 @@
         return Math.max(16, Math.min(baseR, fit));
       }
 
-      function createSimState(cfg) {
-        const activeClubs = allClubs.filter((c) => c.enabled);
-        const pool = [...activeClubs];
-        for (let i = pool.length - 1; i > 0; i--) {
-          const j = Math.floor(Math.random() * (i + 1));
-          [pool[i], pool[j]] = [pool[j], pool[i]];
-        }
+      /* =========================================================================
+         MAÇ MODU — Gerçek maç canlandırma (skorbord, dönen kale, gol animasyonu)
+         ========================================================================= */
+      const MCX = BASE_W / 2;
+      const MCY = 1045;
+      const MR = 400;
+      const EN_MONTHS = ["JANUARY", "FEBRUARY", "MARCH", "APRIL", "MAY", "JUNE", "JULY", "AUGUST", "SEPTEMBER", "OCTOBER", "NOVEMBER", "DECEMBER"];
 
-        const count = pool.length;
-        // 45+ takımlı Mega Kaos modunda logoların halkaya rahat sığması için akıllı boyut ölçekleme
-        const baseR = cfg.logoRadius;
-        const r = computeBadgeRadius(baseR, count);
-        const startHp = cfg.mode === "blade" ? 3 : cfg.mode === "laser" ? 2 : 1;
+      function parseMatchMinute(label) {
+        const m = String(label || "").match(/(\d+)(?:'?\s*\+\s*(\d+))?/);
+        if (!m) return 0;
+        const base = parseInt(m[1], 10);
+        const extra = m[2] ? parseInt(m[2], 10) : 0;
+        return base + Math.min(0.9, extra * 0.1);
+      }
 
-        const badges = pool.map((club, idx) => {
-          const frac = (idx + 0.5) / Math.max(count, 1);
-          const dist = Math.sqrt(frac) * (BASE_RING_R - r - 38);
-          const theta = idx * 2.399963229728653;
-          const initSpd = cfg.mode === "ring" ? 310 : 420;
-          const dir = Math.random() * Math.PI * 2;
-          return {
-            club,
-            sprite: club.sprite,
-            x: RING_CX + Math.cos(theta) * dist,
-            y: RING_CY + Math.sin(theta) * dist,
-            vx: Math.cos(dir) * initSpd,
-            vy: Math.sin(dir) * initSpd,
-            r,
-            angle: (Math.random() - 0.5) * 0.3,
-            vAngle: (Math.random() - 0.5) * 2.2,
-            hp: startHp,
-            maxHp: startHp,
-            hitCooldown: 0,
-            flashTimer: 0,
-            kills: 0,
-            bladeAngle: Math.random() * Math.PI * 2,
-            bladeDir: Math.random() < 0.5 ? 1 : -1,
-            eliminated: false,
-            removed: false,
-            trail: []
-          };
+      function angDiff(a, b) {
+        let d = (a - b) % (Math.PI * 2);
+        if (d > Math.PI) d -= Math.PI * 2;
+        if (d < -Math.PI) d += Math.PI * 2;
+        return Math.abs(d);
+      }
+
+      function matchClubByKey(key) {
+        return allClubs.find((c) => c.key === key) || null;
+      }
+
+      function createMatchState(cfg) {
+        const m = cfg.match;
+        const enabled = allClubs.filter((c) => c.enabled);
+        let home = matchClubByKey(m.homeKey) || enabled[0] || allClubs[0];
+        let away = matchClubByKey(m.awayKey) || enabled.find((c) => c !== home) || allClubs.find((c) => c !== home);
+        loadClubLogo(home);
+        loadClubLogo(away);
+        const r = Math.max(70, Math.min(112, Math.round(cfg.logoRadius * 2)));
+        const mk = (club, side) => ({
+          club, side, sprite: club.sprite, r,
+          x: MCX + (side === "home" ? -150 : 150), y: MCY,
+          vx: 0, vy: 0, angle: 0, vAngle: (Math.random() - 0.5) * 2,
+          eliminated: false, removed: false, trail: []
         });
+        const badges = [mk(home, "home"), mk(away, "away")];
 
-        const hasValidWinner =
-          cfg.selectedWinnerKey !== "random" &&
-          badges.some((b) => b.club.key === cfg.selectedWinnerKey);
+        const scripted = m.scripted && m.goals.length > 0;
+        const goals = scripted
+          ? m.goals.map((g) => ({ ...g, sort: parseMatchMinute(g.label || g.minute) })).sort((a, b) => a.sort - b.sort)
+          : [];
+        const cards = (m.showCards ? m.cards || [] : []).map((k) => ({ ...k, sort: parseMatchMinute(k.label) })).sort((a, b) => a.sort - b.sort);
+
+        const target = cfg.targetDuration || 60;
+        const nGoals = scripted ? goals.length : 3;
+        const playSec = Math.max(16, target - 5 - 1.8 - 1.2 - nGoals * 2.6);
 
         const state = {
-          mode: cfg.mode,
+          mode: "match",
           simTime: 0,
-          ringAngle: Math.PI * 0.22,
-          ringRadius: BASE_RING_R,
-          laserAngle: Math.PI * 0.15,
+          minute: 0,
+          minPerSec: 90 / playSec,
+          phase: "intro",
+          phaseTimer: 1.2,
+          scripted,
+          goals,
+          goalIdx: 0,
+          cards,
+          cardIdx: 0,
+          cardToast: null,
+          score: { home: 0, away: 0 },
+          scorers: { home: [], away: [] },
+          scorePop: 0,
+          goalInfo: null,
+          goalAnim: 0,
+          goalAngle: -0.55,
+          goalDir: 1,
+          goalFlipTimer: 6 + Math.random() * 4,
+          netPulse: 0,
+          halfDone: false,
           badges,
-          totalClubs: badges.length,
+          totalClubs: 2,
           eliminatedList: [],
-          bannerText: "",
-          bannerSubBadge: null,
-          bannerAccent: "#fb7185",
-          bannerAnim: 0,
-          pillPopAnim: 0,
-          ringFlashAnim: 0,
-          shakeIntensity: 0,
-          timeSinceLastElim: 0,
-          finalTwoTriggered: false,
-          slowMoActive: false,
+          ringRadius: MR,
           winner: null,
           winnerTime: 0,
+          draw: false,
           confettiWave2Fired: false,
-          selectedWinnerKey: hasValidWinner ? cfg.selectedWinnerKey : "random",
-
-          // Bomb mode state
-          bombs: [], // { holder, timer, max, cooldown, tick }
+          slowMoActive: false,
+          bombs: [],
           tempo: 1,
-
-          // Visual FX
+          shakeIntensity: 0,
           bgParticles: createBgParticles(),
           sparks: [],
           shockwaves: [],
           confetti: []
         };
-
-        if (cfg.mode === "bomb" && badges.length >= 2) {
-          syncBombs(state, cfg);
-        }
-
         return state;
       }
 
-      // Takım sayısına göre aynı anda kaç bomba olacağı (çok takım = çok bomba, final = tek bomba)
-      function desiredBombCount(aliveCount) {
-        return Math.max(1, Math.min(6, Math.floor(aliveCount / 7)));
-      }
-      function bombOf(state, badge) {
-        return state.bombs.find((bm) => bm.holder === badge) || null;
-      }
-      function syncBombs(state, cfg) {
-        state.bombs = state.bombs.filter((bm) => bm.holder && !bm.holder.eliminated);
-        const alive = state.badges.filter((b) => !b.eliminated);
-        if (alive.length <= 1) { state.bombs = []; return; }
-        const want = Math.min(desiredBombCount(alive.length), alive.length - 1);
-        while (state.bombs.length < want) {
-          const free = alive.filter((b) => !bombOf(state, b));
-          const nonWinners = free.filter((b) => b.club.key !== state.selectedWinnerKey);
-          const pool = nonWinners.length > 0 && Math.random() < 0.85 ? nonWinners : free;
-          if (!pool.length) break;
-          const t = cfg.bombTimer * (state.bombs.length ? 0.75 + Math.random() * 0.6 : 1);
-          state.bombs.push({ holder: pool[Math.floor(Math.random() * pool.length)], timer: t, max: t, cooldown: 0.25, tick: 0 });
+      function matchKickoff(state) {
+        const [h, a] = state.badges;
+        const r = h.r;
+        h.x = MCX - 150; h.y = MCY + (Math.random() - 0.5) * 60;
+        a.x = MCX + 150; a.y = MCY + (Math.random() - 0.5) * 60;
+        for (const b of state.badges) {
+          const dir = Math.random() * Math.PI * 2;
+          b.vx = Math.cos(dir) * 640;
+          b.vy = Math.sin(dir) * 640;
+          b.r = r;
+          b.trail = [];
         }
       }
-      function assignNewBomb(state, cfg) { syncBombs(state, cfg); }
 
-      function spawnSparks(state, x, y, color = "#e0f2fe", count = 8, speed = 260) {
+      function teamConfetti(state, x, y, colors, count = 90) {
         for (let i = 0; i < count; i++) {
           const ang = Math.random() * Math.PI * 2;
-          const spd = speed * (0.35 + Math.random() * 0.9);
-          state.sparks.push({
+          const spd = 300 + Math.random() * 760;
+          state.confetti.push({
             x, y,
             vx: Math.cos(ang) * spd,
-            vy: Math.sin(ang) * spd,
-            life: 0.25 + Math.random() * 0.28,
-            maxLife: 0.53,
-            r: 2.2 + Math.random() * 3.8,
-            color
-          });
-        }
-        if (state.sparks.length > 260) state.sparks.splice(0, state.sparks.length - 260);
-      }
-
-      function spawnShockwave(state, x, y, color = "#f97316", maxR = 230) {
-        state.shockwaves.push({ x, y, r: 20, maxR, life: 0.45, maxLife: 0.45, color });
-      }
-
-      function spawnConfettiWave(state, count = 135) {
-        const colors = ["#facc15", "#fde047", "#ffffff", "#38bdf8", "#2563eb", "#f43f5e", "#10b981"];
-        for (let i = 0; i < count; i++) {
-          const side = i % 2 === 0 ? 120 : BASE_W - 120;
-          const ang = i % 2 === 0
-            ? -Math.PI * 0.38 + (Math.random() - 0.5) * 0.75
-            : -Math.PI * 0.62 + (Math.random() - 0.5) * 0.75;
-          const spd = 420 + Math.random() * 780;
-          state.confetti.push({
-            x: side + (Math.random() - 0.5) * 80,
-            y: RING_CY + 140 + (Math.random() - 0.5) * 120,
-            vx: Math.cos(ang) * spd,
-            vy: Math.sin(ang) * spd,
-            w: 11 + Math.random() * 15,
-            h: 6 + Math.random() * 9,
-            color: colors[Math.floor(Math.random() * colors.length)],
-            rot: Math.random() * Math.PI * 2,
-            vRot: (Math.random() - 0.5) * 14
+            vy: Math.sin(ang) * spd - 300,
+            w: 10 + Math.random() * 14, h: 6 + Math.random() * 8,
+            color: colors[i % colors.length],
+            rot: Math.random() * Math.PI * 2, vRot: (Math.random() - 0.5) * 14
           });
         }
       }
 
-      function eliminateBadge(state, badge, cfg, emitAudio, reasonText, accent = "#fb7185", removeNow = false) {
-        if (badge.eliminated) return;
-        badge.eliminated = true;
-        if (removeNow) badge.removed = true;
-
-        state.eliminatedList.unshift(badge);
-        state.bannerText = reasonText || `${badge.club.name} ELIMINATED`;
-        state.bannerSubBadge = badge;
-        state.bannerAccent = accent;
-        state.bannerAnim = 1.0;
-        state.pillPopAnim = 1.0;
-        state.ringFlashAnim = 1.0;
-        state.shakeIntensity = Math.max(state.shakeIntensity, 10);
-        state.timeSinceLastElim = 0;
-
-        // Ring modunda "Büyüyen Hayatta Kalanlar" aktifse hayatta kalanlar büyür
-        if (state.mode === "ring" && cfg.growSurvivor) {
-          state.badges.forEach((b) => {
-            if (!b.eliminated) b.r = Math.min(cfg.logoRadius * 1.48, b.r + 0.85);
-          });
-        }
-
-        const survivors = state.badges.filter((b) => !b.eliminated);
-        if (survivors.length === 2 && !state.finalTwoTriggered) {
-          state.finalTwoTriggered = true;
-          emitAudio({ type: "final2" });
-        }
-
-        if (survivors.length === 1 && !state.winner) {
-          state.winner = survivors[0];
-          state.winnerTime = 0;
-          state.confettiWave2Fired = false;
-          state.bombs = [];
-          spawnConfettiWave(state, 150);
-          emitAudio({ type: "victory" });
-        }
+      function scoreMatchGoal(state, side, cfg, emitAudio, ev) {
+        const team = state.badges.find((b) => b.side === side);
+        state.score[side] += 1;
+        const label = ev ? ev.label : `${Math.max(1, Math.ceil(state.minute))}'`;
+        const name = ev ? ev.name : team.club.short;
+        state.scorers[side].push({ name, label, og: ev && ev.og, pen: ev && ev.pen });
+        state.goalInfo = { side, name, label, club: team.club, color: team.club.c1 || "#dc2626" };
+        state.phase = "goal";
+        state.phaseTimer = 2.5;
+        state.goalAnim = 0;
+        state.scorePop = 1;
+        state.netPulse = 1;
+        state.shakeIntensity = 16;
+        if (ev) state.goalIdx += 1;
+        const gx = MCX + Math.cos(state.goalAngle) * (MR + 40);
+        const gy = MCY + Math.sin(state.goalAngle) * (MR + 40);
+        teamConfetti(state, gx, gy, [team.club.c1 || "#ffffff", team.club.c2 || "#facc15", "#ffffff"], 110);
+        spawnShockwave(state, gx, gy, team.club.c1 || "#ffffff", 300);
+        emitAudio({ type: "goal" });
       }
 
-      function isAngleInAnyGap(angle, ringAngle, gapHalf, doubleGap) {
-        if (Math.abs(angleDiff(angle, ringAngle)) < gapHalf) return true;
-        if (doubleGap && Math.abs(angleDiff(angle, ringAngle + Math.PI)) < gapHalf) return true;
-        return false;
+      function attackerSide0(state) {
+        const g = state.scripted ? state.goals[state.goalIdx] : null;
+        return g && state.minute >= g.sort - 3.5 ? g.side : null;
       }
 
-      function stepSimState(state, rawDt, cfg, emitAudio) {
-        const aliveList = state.badges.filter((b) => !b.eliminated);
-        const aliveCount = aliveList.length;
-
-        // Son 2 Ağır Çekim (Slow-Mo Finale)
-        state.slowMoActive = !state.winner && cfg.slowMoFinale && aliveCount === 2;
-        const slowFactor = state.slowMoActive ? 0.45 : 1.0;
-
-        // OTOMATİK TEMPO: video hedef sürede bitsin diye oyun gerekirse kendini hızlandırır
-        if (!state.winner) {
-          let desired = 1;
-          const target = cfg.targetDuration || 0;
-          if (target > 0 && aliveCount > 2) {
-            const prePhase = Math.max(12, target - 15); // final düellosu + kutlama payı
-            const elimNeeded = Math.max(1, state.totalClubs - 2);
-            const elimDone = state.totalClubs - aliveCount;
-            const perElimTarget = prePhase / elimNeeded;
-            if (elimDone >= 1) {
-              const projected = (state.simTime / elimDone) * elimNeeded;
-              desired = projected / prePhase;
-            } else {
-              desired = Math.max(1, state.simTime / (perElimTarget * 1.6));
-            }
-            if (state.simTime > prePhase) desired = Math.max(desired, 1 + (state.simTime - prePhase) / 4);
-            desired = Math.max(0.6, Math.min(3.4, desired)); // çok hızlı bitiyorsa biraz yavaşlar
-          } else if (target > 0 && aliveCount === 2 && state.simTime > target - 7) {
-            desired = Math.min(1.8, 1 + (state.simTime - (target - 7)) / 5); // final düellosu uzarsa hafifçe hızlan
-          }
-          state.tempo += (desired - state.tempo) * Math.min(1, rawDt * 0.9);
-        }
-        const tempo = state.winner ? 1 : state.tempo;
-        const dt = state.winner ? rawDt : rawDt * cfg.simSpeed * slowFactor * tempo;
+      function stepMatchState(state, rawDt, cfg, emitAudio) {
         state.simTime += rawDt;
-
-        // Arka plan parçacıkları
         for (const s of state.bgParticles) {
-          s.x += s.vx * rawDt;
-          s.y += s.vy * rawDt;
+          s.x += s.vx * rawDt; s.y += s.vy * rawDt;
           if (s.y < -20) { s.y = BASE_H + 20; s.x = Math.random() * BASE_W; }
           if (s.x < -20) s.x = BASE_W + 20;
           if (s.x > BASE_W + 20) s.x = -20;
         }
-
-        // Kıvılcımlar
         for (let i = state.sparks.length - 1; i >= 0; i--) {
           const p = state.sparks[i];
           p.life -= rawDt;
           if (p.life <= 0) { state.sparks.splice(i, 1); continue; }
-          p.vy += 380 * rawDt;
-          p.x += p.vx * rawDt;
-          p.y += p.vy * rawDt;
+          p.vy += 380 * rawDt; p.x += p.vx * rawDt; p.y += p.vy * rawDt;
         }
-
-        // Şok dalgaları
         for (let i = state.shockwaves.length - 1; i >= 0; i--) {
           const sw = state.shockwaves[i];
           sw.life -= rawDt;
           if (sw.life <= 0) { state.shockwaves.splice(i, 1); continue; }
-          const prog = 1 - sw.life / sw.maxLife;
-          sw.r = 24 + prog * (sw.maxR - 24);
+          sw.r = 24 + (1 - sw.life / sw.maxLife) * (sw.maxR - 24);
         }
-
-        // UI animasyon sönümlemeleri
-        if (state.bannerAnim > 0) state.bannerAnim = Math.max(0, state.bannerAnim - rawDt * 2.4);
-        if (state.pillPopAnim > 0) state.pillPopAnim = Math.max(0, state.pillPopAnim - rawDt * 3.5);
-        if (state.ringFlashAnim > 0) state.ringFlashAnim = Math.max(0, state.ringFlashAnim - rawDt * 2.8);
+        for (let i = state.confetti.length - 1; i >= 0; i--) {
+          const p = state.confetti[i];
+          p.vy += 620 * rawDt; p.vx *= 0.99;
+          p.x += p.vx * rawDt; p.y += p.vy * rawDt; p.rot += p.vRot * rawDt;
+          if (p.y > BASE_H + 60) state.confetti.splice(i, 1);
+        }
         if (state.shakeIntensity > 0) state.shakeIntensity = Math.max(0, state.shakeIntensity - rawDt * 34);
+        if (state.scorePop > 0) state.scorePop = Math.max(0, state.scorePop - rawDt * 1.6);
+        if (state.netPulse > 0) state.netPulse = Math.max(0, state.netPulse - rawDt * 1.4);
+        if (state.cardToast) { state.cardToast.t -= rawDt; if (state.cardToast.t <= 0) state.cardToast = null; }
 
-        // Şampiyonluk kutlama fazı
+        // Final düdüğü sonrası kutlama
         if (state.winner) {
           state.winnerTime += rawDt;
-          state.winner.x += (RING_CX - state.winner.x) * Math.min(1, rawDt * 4.2);
-          state.winner.y += (RING_CY - 20 - state.winner.y) * Math.min(1, rawDt * 4.2);
-          state.winner.angle *= 0.90;
-          state.winner.vx = 0;
-          state.winner.vy = 0;
-
-          if (!state.confettiWave2Fired && state.winnerTime >= 1.25) {
-            state.confettiWave2Fired = true;
-            spawnConfettiWave(state, 130);
+          for (const b of state.badges) {
+            const tx = state.draw ? MCX + (b.side === "home" ? -120 : 120) : (b === state.winner ? MCX : MCX + (b.side === "home" ? -260 : 260));
+            const ty = state.draw ? MCY + 40 : (b === state.winner ? MCY + 60 : MCY + 220);
+            b.x += (tx - b.x) * Math.min(1, rawDt * 4);
+            b.y += (ty - b.y) * Math.min(1, rawDt * 4);
+            b.angle *= 0.9;
           }
-
-          for (const p of state.confetti) {
-            p.vy += 580 * rawDt;
-            p.vx *= 0.992;
-            p.x += p.vx * rawDt;
-            p.y += p.vy * rawDt;
-            p.rot += p.vRot * rawDt;
+          if (!state.draw && !state.confettiWave2Fired && state.winnerTime >= 1.2) {
+            state.confettiWave2Fired = true;
+            spawnConfettiWave(state, 120);
           }
           return;
         }
 
-        state.timeSinceLastElim += rawDt;
-
-        // Daralan Halka (Ring Modu)
-        const targetRingR = (state.mode === "ring" && cfg.shrinkingRing)
-          ? Math.max(255, BASE_RING_R - ((state.totalClubs - aliveCount) / Math.max(1, state.totalClubs - 1)) * 155)
-          : BASE_RING_R;
-        state.ringRadius += (targetRingR - state.ringRadius) * Math.min(1, rawDt * 3.0);
-
-        const subSteps = Math.max(4, Math.ceil(cfg.simSpeed * tempo * 4));
-
-        // Elendikçe kalan logolar seçilen boyuta doğru büyür
-        const fitR = computeBadgeRadius(cfg.logoRadius, aliveCount) * (state.mode === "ring" && cfg.growSurvivor ? 1.15 : 1);
-        for (const b of aliveList) b.r += (fitR - b.r) * Math.min(1, rawDt * 1.6);
-        const subDt = dt / subSteps;
-
-        // Mod bazlı yerçekimi & hız ölçeği
-        const modeGravity = state.mode === "ring"
-          ? 1100 * cfg.gravityScale
-          : 260 * cfg.gravityScale; // Bomb, Blade, Laser modlarında daha serbest arena hareketi
-
-        const escalation = (state.mode === "ring" && cfg.speedEscalation)
-          ? 1 + ((state.totalClubs - aliveCount) / Math.max(1, state.totalClubs)) * 0.65
-          : 1.0;
-
-        const omega = cfg.ringSpeed * 1.15 * escalation;
-        const gapRad = (cfg.gapDegrees * Math.PI) / 180;
-        const gapHalf = gapRad / 2;
-
-        // Tıkanma önleyici (Ring modunda son 3 takımda uzun süre kimse elenmezse)
-        const ringAntiStall = state.mode === "ring" && (
-          (aliveCount <= 3 && state.timeSinceLastElim > 4.2) ||
-          (aliveCount <= 6 && state.timeSinceLastElim > 6.5) ||
-          state.timeSinceLastElim > 9.0
-        );
-
-        // SAATLİ BOMBALAR: GERİ SAYIM, TİK SESİ, PATLAMA (çoklu bomba)
-        if (state.mode === "bomb" && state.bombs.length) {
-          let tickedThisFrame = false;
-          for (const bm of [...state.bombs]) {
-            if (!bm.holder || bm.holder.eliminated || state.winner) continue;
-            bm.timer -= dt;
-            if (bm.cooldown > 0) bm.cooldown = Math.max(0, bm.cooldown - dt);
-            const urgency = 1 - Math.max(0, bm.timer / bm.max);
-            const tickInterval = Math.max(0.11, 0.52 - urgency * 0.40);
-            bm.tick += dt;
-            if (bm.tick >= tickInterval) {
-              bm.tick = 0;
-              if (!tickedThisFrame) { emitAudio({ type: "tick", urgency }); tickedThisFrame = true; }
-            }
-
-            // Seçili kazanan bomba tutuyorsa süre bitmeden en yakın boştaki rakibe devreder
-            if (state.selectedWinnerKey !== "random" && bm.holder.club.key === state.selectedWinnerKey) {
-              let nearest = null, bestD = Infinity;
-              for (const other of aliveList) {
-                if (other === bm.holder || bombOf(state, other)) continue;
-                const d = Math.hypot(other.x - bm.holder.x, other.y - bm.holder.y);
-                if (d < bestD) { bestD = d; nearest = other; }
-              }
-              if (nearest) {
-                const nx = (nearest.x - bm.holder.x) / (bestD || 1);
-                const ny = (nearest.y - bm.holder.y) / (bestD || 1);
-                const boost = bm.timer < 1.1 ? 920 : 420;
-                bm.holder.vx += nx * boost * dt;
-                bm.holder.vy += ny * boost * dt;
-                if (bm.timer <= 0.28) {
-                  bm.holder = nearest;
-                  bm.cooldown = 0.4;
-                  spawnSparks(state, nearest.x, nearest.y, "#facc15", 12, 320);
-                }
-              }
-            }
-
-            if (bm.timer <= 0 && !state.winner) {
-              const victim = bm.holder;
-              state.bombs.splice(state.bombs.indexOf(bm), 1);
-              spawnSparks(state, victim.x, victim.y, "#f97316", 34, 480);
-              spawnSparks(state, victim.x, victim.y, "#fef08a", 20, 340);
-              spawnShockwave(state, victim.x, victim.y, "#f97316", 260);
-              state.shakeIntensity = 20;
-              emitAudio({ type: "explode" });
-              eliminateBadge(state, victim, cfg, emitAudio, `💥 ${victim.club.name} PATLADI!`, "#fb923c", true);
-            }
+        // Faz zamanlayıcıları
+        if (state.phase !== "play") {
+          state.phaseTimer -= rawDt;
+          if (state.phase === "goal") {
+            state.goalAnim += rawDt;
+            const sc = state.badges.find((b) => b.side === state.goalInfo.side);
+            sc.vx *= 0.9; sc.vy *= 0.9;
+            sc.x += sc.vx * rawDt; sc.y += sc.vy * rawDt;
           }
-          if (!state.winner) syncBombs(state, cfg);
+          if (state.phaseTimer <= 0) {
+            if (state.phase === "fulltime") return;
+            matchKickoff(state);
+            state.phase = "play";
+            emitAudio({ type: "whistle", long: false });
+          }
+          return;
         }
 
-        // FİZİK ALT ADIMLARI
-        for (let step = 0; step < subSteps; step++) {
-          if (state.mode === "ring") {
-            state.ringAngle = normalizeAngle(state.ringAngle + omega * subDt);
-          } else if (state.mode === "laser") {
-            const laserSpd = cfg.laserSpeed * (1.25 + (1 - aliveCount / Math.max(1, state.totalClubs)) * 0.55);
-            state.laserAngle = normalizeAngle(state.laserAngle + laserSpd * subDt);
-          }
+        const dt = rawDt * cfg.simSpeed;
+        const pending = state.scripted ? state.goals[state.goalIdx] : null;
 
-          const R = state.ringRadius;
-          const gapTargetX = RING_CX + Math.cos(state.ringAngle) * (R + 40);
-          const gapTargetY = RING_CY + Math.sin(state.ringAngle) * (R + 40);
+        // Dakika ilerlemesi: sıradaki golün dakikasında saat bekler
+        if (pending && state.minute >= pending.sort) {
+          state.minute = pending.sort;
+        } else {
+          // Uyarlanır saat: gol beklemelerinde kaybedilen süreyi sonra telafi eder
+          const target = cfg.targetDuration || 60;
+          const left = state.goals.length - state.goalIdx;
+          const budget = target - 5 - state.simTime - left * 2.6 - (state.halfDone ? 0 : 1.8);
+          const rate = Math.max(state.minPerSec * 0.7, Math.min(state.minPerSec * 3, (90 - state.minute) / Math.max(3, budget)));
+          state.minute += rate * rawDt;
+          if (pending && state.minute > pending.sort) state.minute = pending.sort;
+        }
 
-          // 1. Konum, Duvar, Mod Fiziği
+        // Devre arası
+        if (!state.halfDone && state.minute >= 45 && !(pending && pending.sort < 46)) {
+          state.halfDone = true;
+          state.minute = 45;
+          state.phase = "halftime";
+          state.phaseTimer = 1.8;
+          emitAudio({ type: "whistle", long: true });
+          return;
+        }
+        // Maç sonu
+        if (state.minute >= 90 && !(pending && pending.sort < 91)) {
+          state.minute = 90;
+          state.phase = "fulltime";
+          const [h, a] = state.badges;
+          if (state.score.home === state.score.away) { state.draw = true; state.winner = h; }
+          else state.winner = state.score.home > state.score.away ? h : a;
+          emitAudio({ type: "whistle", long: true, triple: true });
+          if (!state.draw) { emitAudio({ type: "victory" }); spawnConfettiWave(state, 140); }
+          return;
+        }
+
+        // Kartlar
+        while (state.cardIdx < state.cards.length && state.cards[state.cardIdx].sort <= state.minute) {
+          const k = state.cards[state.cardIdx++];
+          state.cardToast = { ...k, t: 2.0 };
+          emitAudio({ type: "whistle", long: false, short: true });
+        }
+
+        // Dönen kale
+        state.goalFlipTimer -= rawDt;
+        if (state.goalFlipTimer <= 0) { state.goalDir *= -1; state.goalFlipTimer = 6 + Math.random() * 5; }
+        state.goalAngle += state.goalDir * cfg.matchGoalSpeed * 0.55 * dt * (attackerSide0(state) ? 0.35 : 1);
+
+        const gapHalf = ((cfg.matchGoalWidth || 46) * Math.PI) / 360;
+        const attackerSide = pending && state.minute >= pending.sort - 3.5 ? pending.side : null;
+        const attacker = attackerSide ? state.badges.find((b) => b.side === attackerSide) : null;
+
+        const sub = 5;
+        const sdt = dt / sub;
+        for (let s = 0; s < sub; s++) {
           for (const b of state.badges) {
-            if (b.removed || b === state.winner) continue;
-
-            if (b.hitCooldown > 0) b.hitCooldown = Math.max(0, b.hitCooldown - subDt);
-            if (b.flashTimer > 0) b.flashTimer = Math.max(0, b.flashTimer - subDt);
-
-            const isProtected = state.selectedWinnerKey !== "random" && b.club.key === state.selectedWinnerKey;
-
-            // Kılıç dönüşü
-            if (state.mode === "blade" && !b.eliminated) {
-              const bSpd = cfg.bladeSpeed * 4.4 * (isProtected ? 1.12 : 1.0);
-              b.bladeAngle = normalizeAngle(b.bladeAngle + b.bladeDir * bSpd * subDt);
+            if (b === attacker) {
+              const tx = MCX + Math.cos(state.goalAngle) * (MR + 60);
+              const ty = MCY + Math.sin(state.goalAngle) * (MR + 60);
+              const dx = tx - b.x, dy = ty - b.y;
+              const d = Math.hypot(dx, dy) || 1;
+              const urgency = state.minute >= pending.sort ? 2.2 : 1;
+              b.vx += (dx / d) * 3400 * urgency * sdt;
+              b.vy += (dy / d) * 3400 * urgency * sdt;
+              const sp = Math.hypot(b.vx, b.vy);
+              const maxSp = 1450;
+              if (sp > maxSp) { b.vx *= maxSp / sp; b.vy *= maxSp / sp; }
+            } else {
+              const sp = Math.hypot(b.vx, b.vy) || 1;
+              const want = Math.max(520, Math.min(860, sp));
+              b.vx *= want / sp; b.vy *= want / sp;
             }
+            b.x += b.vx * sdt;
+            b.y += b.vy * sdt;
+            b.angle += b.vAngle * sdt * (cfg.spinSpeed ?? 0.3);
 
-            // Ring anti-stall
-            if (ringAntiStall && !b.eliminated && !isProtected) {
-              const gx = gapTargetX - b.x;
-              const gy = gapTargetY - b.y;
-              const gd = Math.hypot(gx, gy) || 1;
-              b.vx += (gx / gd) * (aliveCount <= 3 ? 620 : 360) * subDt;
-              b.vy += (gy / gd) * (aliveCount <= 3 ? 620 : 360) * subDt;
-            }
-
-            // Bomb / Blade / Laser modlarında enerjik hareketi koru
-            if (!b.eliminated && state.mode !== "ring") {
-              const minArenaSpd = state.mode === "bomb" ? 360 * cfg.bombChaos : 330;
-              const spd = Math.hypot(b.vx, b.vy);
-              if (spd < minArenaSpd && spd > 1) {
-                const k = (minArenaSpd - spd) * 2.5 * subDt;
-                b.vx += (b.vx / spd) * k;
-                b.vy += (b.vy / spd) * k;
+            const dx = b.x - MCX, dy = b.y - MCY;
+            const d = Math.hypot(dx, dy) || 1;
+            const ang = Math.atan2(dy, dx);
+            const mouthOk = angDiff(ang, state.goalAngle) < gapHalf - (b.r / MR) * 0.55;
+            const canScore = state.scripted ? b === attacker : true;
+            if (mouthOk && canScore) {
+              if (d > MR + b.r * 0.15) {
+                scoreMatchGoal(state, b.side, cfg, emitAudio, state.scripted ? pending : null);
+                return;
               }
-            }
-
-            b.vx *= 1 - 0.04 * subDt;
-            b.vy = b.vy * (1 - 0.04 * subDt) + modeGravity * subDt;
-            b.x += b.vx * subDt;
-            b.y += b.vy * subDt;
-            b.vAngle = Math.max(-3.2, Math.min(3.2, b.vAngle));
-            b.angle += b.vAngle * subDt * cfg.spinSpeed;
-
-            if (b.eliminated) {
-              if (step === 0) {
-                b.trail.unshift({ x: b.x, y: b.y });
-                if (b.trail.length > 14) b.trail.pop();
-              }
-              if (b.y - b.r > BASE_H + 160) b.removed = true;
               continue;
             }
-
-            const dx = b.x - RING_CX;
-            const dy = b.y - RING_CY;
-            const dist = Math.hypot(dx, dy);
-            const ang = Math.atan2(dy, dx);
-
-            if (state.mode === "ring") {
-              const inGap = isAngleInAnyGap(ang, state.ringAngle, gapHalf, cfg.doubleGap);
-              if (inGap && !isProtected) {
-                if (dist > R + b.r * 0.28) {
-                  spawnSparks(state, b.x, b.y, "#fb7185", 16, 280);
-                  emitAudio({ type: "elim" });
-                  eliminateBadge(state, b, cfg, emitAudio, `${b.club.name} ELIMINATED`, "#fb7185", false);
-                  continue;
-                }
-              } else if (dist + b.r > R) {
-                const nx = dx / (dist || 1);
-                const ny = dy / (dist || 1);
-                b.x = RING_CX + nx * (R - b.r);
-                b.y = RING_CY + ny * (R - b.r);
-                const tx = -ny;
-                const ty = nx;
-                const wallTang = omega * R;
-                const vn = b.vx * nx + b.vy * ny;
-                if (vn > 0) {
-                  const e = Math.min(0.96, cfg.bounciness * (aliveCount <= 5 ? 1.06 : 1.0));
-                  b.vx -= (1 + e) * vn * nx;
-                  b.vy -= (1 + e) * vn * ny;
-                  if (inGap && isProtected) {
-                    b.vx += -nx * 145 + tx * wallTang * 0.12;
-                    b.vy += -ny * 145 + ty * wallTang * 0.12;
-                  } else {
-                    b.vx += tx * wallTang * 0.085;
-                    b.vy += ty * wallTang * 0.085;
-                  }
-                  b.vAngle += wallTang * 0.0016;
-                  const spd = Math.hypot(b.vx, b.vy);
-                  if (spd < 280) {
-                    b.vx += (-nx * 0.6 + tx * 0.8) * 140;
-                    b.vy += (-ny * 0.6 + ty * 0.8) * 140;
-                  }
-                  if (vn > 180) {
-                    emitAudio({ type: "bounce", intensity: vn / 750, isWall: true });
-                    if (vn > 340 && !inGap) {
-                      spawnSparks(state, RING_CX + nx * R, RING_CY + ny * R, THEMES[cfg.theme].sparkColor, 4, 210);
-                    }
-                  }
-                }
+            if (d + b.r > MR) {
+              const nx = dx / d, ny = dy / d;
+              const vn = b.vx * nx + b.vy * ny;
+              if (vn > 0) {
+                b.vx -= 2 * vn * nx; b.vy -= 2 * vn * ny;
+                b.vAngle += (Math.random() - 0.5) * 1.5;
+                emitAudio({ type: "bounce", intensity: Math.min(1, vn / 900), isWall: true });
               }
-            } else {
-              // Kapalı Arena Duvarı (Bomb, Blade, Laser)
-              if (dist + b.r > R) {
-                const nx = dx / (dist || 1);
-                const ny = dy / (dist || 1);
-                b.x = RING_CX + nx * (R - b.r);
-                b.y = RING_CY + ny * (R - b.r);
-                const vn = b.vx * nx + b.vy * ny;
-                if (vn > 0) {
-                  const e = 0.94;
-                  b.vx -= (1 + e) * vn * nx;
-                  b.vy -= (1 + e) * vn * ny;
-                  if (vn > 200) emitAudio({ type: "bounce", intensity: vn / 800, isWall: true });
-                }
-              }
-            }
-
-            // ÖLÜM LAZERİ ÇARPIŞMA KONTROLÜ
-            if (state.mode === "laser" && !b.eliminated) {
-              const beams = cfg.laserCount === 2 ? [state.laserAngle, state.laserAngle + Math.PI] : [state.laserAngle];
-              for (const bAng of beams) {
-                const lx2 = RING_CX + Math.cos(bAng) * R;
-                const ly2 = RING_CY + Math.sin(bAng) * R;
-                const dBeam = distPointToSegment(b.x, b.y, RING_CX, RING_CY, lx2, ly2);
-
-                // Seçili kazanan için doğal lazer kaçışı (plot armor)
-                if (isProtected && dBeam < b.r + 48) {
-                  const perpX = -Math.sin(bAng);
-                  const perpY = Math.cos(bAng);
-                  const side = (b.x - RING_CX) * perpX + (b.y - RING_CY) * perpY >= 0 ? 1 : -1;
-                  b.vx += perpX * side * 950 * subDt;
-                  b.vy += perpY * side * 950 * subDt;
-                }
-
-                if (dBeam < b.r + 7 && b.hitCooldown <= 0) {
-                  b.hitCooldown = 0.65;
-                  b.flashTimer = 0.25;
-                  const perpX = -Math.sin(bAng);
-                  const perpY = Math.cos(bAng);
-                  const side = (b.x - RING_CX) * perpX + (b.y - RING_CY) * perpY >= 0 ? 1 : -1;
-                  b.vx += perpX * side * 340;
-                  b.vy += perpY * side * 340;
-
-                  if ((isProtected && b.hp <= 1) || (b.hp <= 1 && !lethalHitAllowed(state, cfg))) {
-                    // Kalkan kıvılcımıyla sektir
-                    spawnSparks(state, b.x, b.y, "#38bdf8", 12, 320);
-                    emitAudio({ type: "clang" });
-                  } else {
-                    b.hp -= 1;
-                    spawnSparks(state, b.x, b.y, "#22d3ee", 16, 360);
-                    emitAudio({ type: "zap" });
-                    state.shakeIntensity = Math.max(state.shakeIntensity, 7);
-                    if (b.hp <= 0) {
-                      spawnShockwave(state, b.x, b.y, "#22d3ee", 150);
-                      eliminateBadge(state, b, cfg, emitAudio, `⚡ ${b.club.name} LAZERLE ELENDİ!`, "#22d3ee", true);
-                      break;
-                    }
-                  }
-                }
-              }
+              b.x = MCX + nx * (MR - b.r);
+              b.y = MCY + ny * (MR - b.r);
             }
           }
-
-          // 2. Kulüpler Arası Çarpışmalar + Bomba Devri + Kılıç Savaşı
-          for (let i = 0; i < state.badges.length; i++) {
-            const a = state.badges[i];
-            if (a.eliminated || a === state.winner) continue;
-            for (let j = i + 1; j < state.badges.length; j++) {
-              const b = state.badges[j];
-              if (b.eliminated || b === state.winner) continue;
-
-              const dx = b.x - a.x;
-              const dy = b.y - a.y;
-              const dSq = dx * dx + dy * dy;
-              const minD = a.r + b.r;
-
-              // Gövde-Gövde Çarpışması
-              if (dSq < minD * minD && dSq > 0.0001) {
-                const dist = Math.sqrt(dSq);
-                const nx = dx / dist;
-                const ny = dy / dist;
-                const overlap = (minD - dist) * 0.51;
-                a.x -= nx * overlap; a.y -= ny * overlap;
-                b.x += nx * overlap; b.y += ny * overlap;
-
-                const rvx = b.vx - a.vx;
-                const rvy = b.vy - a.vy;
-                const vn = rvx * nx + rvy * ny;
-                if (vn < 0) {
-                  const e = state.mode === "ring" ? cfg.bounciness : 0.94;
-                  const imp = -(1 + e) * vn * 0.5;
-                  a.vx -= imp * nx; a.vy -= imp * ny;
-                  b.vx += imp * nx; b.vy += imp * ny;
-                  const spin = (rvx * -ny + rvy * nx) * 0.002;
-                  a.vAngle -= spin; b.vAngle += spin;
-
-                  if (Math.abs(vn) > 220) {
-                    emitAudio({ type: "bounce", intensity: Math.abs(vn) / 850, isWall: false });
-                  }
-                }
-
-                // SAATLİ BOMBA DEVRİ
-                if (state.mode === "bomb") {
-                  const ba = bombOf(state, a), bb = bombOf(state, b);
-                  if (ba && !bb && ba.cooldown <= 0) {
-                    ba.holder = b;
-                    ba.cooldown = 0.36;
-                    spawnSparks(state, (a.x + b.x) / 2, (a.y + b.y) / 2, "#facc15", 10, 260);
-                  } else if (bb && !ba && bb.cooldown <= 0) {
-                    bb.holder = a;
-                    bb.cooldown = 0.36;
-                    spawnSparks(state, (a.x + b.x) / 2, (a.y + b.y) / 2, "#facc15", 10, 260);
-                  }
-                }
-              }
-
-              // KILIÇ SAVAŞI ÇARPIŞMALARI
-              if (state.mode === "blade" && dSq < (minD + cfg.bladeLength * 2 + 12) ** 2) {
-                const aTipX = a.x + Math.cos(a.bladeAngle) * (a.r + cfg.bladeLength);
-                const aTipY = a.y + Math.sin(a.bladeAngle) * (a.r + cfg.bladeLength);
-                const bTipX = b.x + Math.cos(b.bladeAngle) * (b.r + cfg.bladeLength);
-                const bTipY = b.y + Math.sin(b.bladeAngle) * (b.r + cfg.bladeLength);
-
-                // Kılıç-Kılıç çarpışması (Parry)
-                const tipDist = Math.hypot(aTipX - bTipX, aTipY - bTipY);
-                if (tipDist < 26) {
-                  a.bladeDir *= -1;
-                  b.bladeDir *= -1;
-                  a.bladeAngle += a.bladeDir * 0.35;
-                  b.bladeAngle += b.bladeDir * 0.35;
-                  spawnSparks(state, (aTipX + bTipX) / 2, (aTipY + bTipY) / 2, "#fef08a", 9, 320);
-                  emitAudio({ type: "clang" });
-                }
-
-                // A'nın kılıcı B'nin gövdesine vurursa
-                const dAtoB = distPointToSegment(b.x, b.y, a.x + Math.cos(a.bladeAngle) * a.r, a.y + Math.sin(a.bladeAngle) * a.r, aTipX, aTipY);
-                if (dAtoB < b.r + 4 && b.hitCooldown <= 0) {
-                  applyBladeHit(state, a, b, cfg, emitAudio);
-                }
-
-                // B'nin kılıcı A'nın gövdesine vurursa
-                if (!a.eliminated && !b.eliminated) {
-                  const dBtoA = distPointToSegment(a.x, a.y, b.x + Math.cos(b.bladeAngle) * b.r, b.y + Math.sin(b.bladeAngle) * b.r, bTipX, bTipY);
-                  if (dBtoA < a.r + 4 && a.hitCooldown <= 0) {
-                    applyBladeHit(state, b, a, cfg, emitAudio);
-                  }
-                }
-              }
+          // İki takım çarpışması (hücum anında rakip yol açar)
+          const [a, b] = state.badges;
+          const dx = b.x - a.x, dy = b.y - a.y;
+          const d = Math.hypot(dx, dy) || 1;
+          const minD = a.r + b.r;
+          if (d < minD && !attacker) {
+            const nx = dx / d, ny = dy / d;
+            const overlap = (minD - d) / 2;
+            a.x -= nx * overlap; a.y -= ny * overlap;
+            b.x += nx * overlap; b.y += ny * overlap;
+            const rel = (b.vx - a.vx) * nx + (b.vy - a.vy) * ny;
+            if (rel < 0) {
+              a.vx += rel * nx; a.vy += rel * ny;
+              b.vx -= rel * nx; b.vy -= rel * ny;
+              emitAudio({ type: "bounce", intensity: Math.min(1, -rel / 900), isWall: false });
+              spawnSparks(state, a.x + nx * a.r, a.y + ny * a.r, "#ffffff", 6, 200);
             }
           }
         }
-
-        // Hız limiti
-        const maxSpd = state.mode === "ring" ? 1350 : 980;
         for (const b of state.badges) {
-          if (b.eliminated) continue;
-          const spd = Math.hypot(b.vx, b.vy);
-          if (spd > maxSpd) {
-            const k = maxSpd / spd;
-            b.vx *= k; b.vy *= k;
-          }
-          b.vAngle *= 0.99;
+          b.trail.push({ x: b.x, y: b.y });
+          if (b.trail.length > 8) b.trail.shift();
         }
       }
 
-      // Hedef süreye göre iki eleme arasında olması gereken en kısa süre (Kılıç & Lazer modları)
+      function fitText(c, text, maxW, font) {
+        c.font = font;
+        const w = c.measureText(text).width;
+        return w > maxW ? maxW / w : 1;
+      }
+
+      function drawOutlinedText(c, text, x, y, fill, stroke, lw) {
+        c.lineJoin = "round";
+        c.strokeStyle = stroke;
+        c.lineWidth = lw;
+        c.strokeText(text, x, y);
+        c.fillStyle = fill;
+        c.fillText(text, x, y);
+      }
+
+      function renderMatchState(c, state, cfg, targetW = BASE_W, targetH = BASE_H) {
+        const theme = THEMES[cfg.theme] || THEMES.ucl;
+        const m = cfg.match;
+        const [home, away] = state.badges;
+        c.save();
+        if (targetW !== BASE_W || targetH !== BASE_H) c.scale(targetW / BASE_W, targetH / BASE_H);
+        if (state.shakeIntensity > 0.2) c.translate((Math.random() - 0.5) * state.shakeIntensity, (Math.random() - 0.5) * state.shakeIntensity);
+
+        // Arka plan
+        const bg = c.createRadialGradient(BASE_W * 0.5, BASE_H * 0.4, 60, BASE_W * 0.5, BASE_H * 0.5, BASE_H * 0.8);
+        bg.addColorStop(0, theme.bg0); bg.addColorStop(0.36, theme.bg1); bg.addColorStop(0.76, theme.bg2); bg.addColorStop(1, theme.bg3);
+        c.fillStyle = bg;
+        c.fillRect(-25, -25, BASE_W + 50, BASE_H + 50);
+        const ray = c.createLinearGradient(0, 300, 0, 1300);
+        ray.addColorStop(0, "rgba(255,255,255,0.10)");
+        ray.addColorStop(1, "rgba(255,255,255,0)");
+        c.fillStyle = ray;
+        c.beginPath(); c.ellipse(MCX, 560, 520, 260, 0, 0, Math.PI * 2); c.fill();
+        for (const s of state.bgParticles) {
+          const tw = 0.5 + 0.5 * Math.sin(state.simTime * 2.4 + s.phase);
+          c.fillStyle = `rgba(219, 234, 254, ${s.alpha * tw * 0.7})`;
+          c.beginPath(); c.arc(s.x, s.y, s.r, 0, Math.PI * 2); c.fill();
+        }
+
+        // Başlık: lig logosu + turnuva + şehir
+        c.textAlign = "center";
+        c.textBaseline = "middle";
+        const lg = cfg.showLeagueLogo ? getLeagueLogo(cfg.leagueSlug || theme.leagueSlug) : null;
+        if (lg) {
+          const box = 74, sc = Math.min(box / lg.naturalWidth, box / lg.naturalHeight);
+          c.drawImage(lg, MCX - (lg.naturalWidth * sc) / 2, 92 - (lg.naturalHeight * sc) / 2, lg.naturalWidth * sc, lg.naturalHeight * sc);
+        }
+        const title = (m.title || "CHAMPIONS LEAGUE").toUpperCase();
+        const tFont = "900 72px 'Montserrat', sans-serif";
+        const ts = fitText(c, title, 980, tFont);
+        c.save();
+        c.translate(MCX, 178); c.scale(ts, ts);
+        const tg = c.createLinearGradient(-400, 0, 400, 0);
+        tg.addColorStop(0, "#7dd3fc"); tg.addColorStop(0.5, "#e0f2fe"); tg.addColorStop(1, "#38bdf8");
+        c.shadowColor = "rgba(0,0,0,0.55)"; c.shadowBlur = 16;
+        c.fillStyle = theme.trophy === "ucl" ? tg : theme.subColor;
+        c.fillText(title, 0, 0);
+        c.restore();
+        if (m.city) {
+          c.font = "900 46px 'Montserrat', sans-serif";
+          c.fillStyle = "#ffffff";
+          c.shadowColor = "rgba(0,0,0,0.6)"; c.shadowBlur = 10;
+          c.fillText(m.city.toUpperCase(), MCX, 242, 900);
+          c.shadowBlur = 0;
+        }
+
+        // Skorbord
+        const by = 300, bh = 100;
+        c.save();
+        c.fillStyle = "rgba(6, 10, 28, 0.72)";
+        c.beginPath(); c.roundRect(40, by, BASE_W - 80, bh, 18); c.fill();
+        const hg = c.createLinearGradient(40, 0, 420, 0);
+        hg.addColorStop(0, (home.club.c1 || "#1e3a8a") + "66"); hg.addColorStop(1, "rgba(0,0,0,0)");
+        c.fillStyle = hg; c.beginPath(); c.roundRect(40, by, 400, bh, 18); c.fill();
+        const ag = c.createLinearGradient(BASE_W - 420, 0, BASE_W - 40, 0);
+        ag.addColorStop(0, "rgba(0,0,0,0)"); ag.addColorStop(1, (away.club.c1 || "#7f1d1d") + "66");
+        c.fillStyle = ag; c.beginPath(); c.roundRect(BASE_W - 440, by, 400, bh, 18); c.fill();
+        c.fillStyle = "#dc2626";
+        c.fillRect(40, by + bh - 6, BASE_W - 80, 6);
+        c.restore();
+
+        const logoR = 40;
+        c.save(); c.shadowColor = "rgba(0,0,0,0.6)"; c.shadowBlur = 10;
+        c.drawImage(home.sprite, 78, by + bh / 2 - logoR - 3, logoR * 2, logoR * 2);
+        c.drawImage(away.sprite, BASE_W - 78 - logoR * 2, by + bh / 2 - logoR - 3, logoR * 2, logoR * 2);
+        c.restore();
+        c.font = "900 58px 'Montserrat', sans-serif";
+        c.fillStyle = "#ffffff";
+        c.textAlign = "left"; c.fillText(home.club.short.slice(0, 4), 180, by + bh / 2 - 2, 190);
+        c.textAlign = "right"; c.fillText(away.club.short.slice(0, 4), BASE_W - 180, by + bh / 2 - 2, 190);
+
+        // Skor kutusu
+        const pop = 1 + state.scorePop * 0.18;
+        c.save();
+        c.translate(MCX, by + bh / 2 - 6);
+        c.scale(pop, pop);
+        const sbg = c.createLinearGradient(0, -62, 0, 62);
+        sbg.addColorStop(0, "#ef233c"); sbg.addColorStop(1, "#b91c1c");
+        c.fillStyle = sbg;
+        c.shadowColor = "rgba(220, 38, 38, 0.6)"; c.shadowBlur = 24;
+        c.beginPath(); c.roundRect(-128, -62, 256, 124, 14); c.fill();
+        c.shadowBlur = 0;
+        c.textAlign = "center";
+        c.font = "900 92px 'Montserrat', sans-serif";
+        c.fillStyle = "#ffffff";
+        c.fillText(`${state.score.home} - ${state.score.away}`, 0, 6);
+        c.restore();
+
+        // Dakika
+        const pending = state.scripted ? state.goals[state.goalIdx] : null;
+        let minLabel = `${Math.max(0, Math.floor(state.minute))}'`;
+        if (pending && state.minute >= pending.sort - 0.001 && pending.sort % 1 > 0) minLabel = pending.label;
+        if (state.phase === "intro") minLabel = "0'";
+        if (state.phase === "halftime") minLabel = "HT";
+        if (state.winner) minLabel = "FT";
+        c.save();
+        c.fillStyle = "#16224a";
+        c.beginPath(); c.roundRect(MCX - 74, by + bh + 14, 148, 58, 12); c.fill();
+        c.font = "900 40px 'Montserrat', sans-serif";
+        c.fillStyle = state.phase === "play" ? "#ffffff" : "#facc15";
+        c.textAlign = "center";
+        c.fillText(minLabel, MCX, by + bh + 45);
+        c.restore();
+
+        // Golcüler
+        c.save();
+        c.font = "800 31px 'Montserrat', sans-serif";
+        c.fillStyle = "#ffffff";
+        c.shadowColor = "rgba(0,0,0,0.6)"; c.shadowBlur = 8;
+        const lineH = 40;
+        const listH = state.scorers.home.slice(-4), listA = state.scorers.away.slice(-4);
+        c.textAlign = "right";
+        listH.forEach((g, i) => c.fillText(`${g.name}${g.og ? " (OG)" : g.pen ? " (P)" : ""} ${g.label}`, MCX - 92, by + bh + 34 + i * lineH, 400));
+        c.textAlign = "left";
+        listA.forEach((g, i) => c.fillText(`${g.name}${g.og ? " (OG)" : g.pen ? " (P)" : ""} ${g.label}`, MCX + 92, by + bh + 34 + i * lineH, 400));
+        c.restore();
+
+        // Saha
+        const gapHalf = ((cfg.matchGoalWidth || 46) * Math.PI) / 360;
+        c.save();
+        c.shadowColor = "rgba(0,0,0,0.55)"; c.shadowBlur = 40;
+        c.beginPath(); c.arc(MCX, MCY, MR + 8, 0, Math.PI * 2); c.fillStyle = "#14532d"; c.fill();
+        c.restore();
+        c.save();
+        c.beginPath(); c.arc(MCX, MCY, MR, 0, Math.PI * 2); c.clip();
+        const stripes = 12, sh = (MR * 2) / stripes;
+        for (let i = 0; i < stripes; i++) {
+          c.fillStyle = i % 2 === 0 ? "#2f9e44" : "#37b24d";
+          c.fillRect(MCX - MR, MCY - MR + i * sh, MR * 2, sh + 1);
+        }
+        const vg = c.createRadialGradient(MCX, MCY - 120, 60, MCX, MCY, MR);
+        vg.addColorStop(0, "rgba(255,255,255,0.10)"); vg.addColorStop(1, "rgba(0,0,0,0.28)");
+        c.fillStyle = vg; c.fillRect(MCX - MR, MCY - MR, MR * 2, MR * 2);
+        c.strokeStyle = "rgba(255,255,255,0.75)";
+        c.lineWidth = 5;
+        c.beginPath(); c.moveTo(MCX - MR, MCY); c.lineTo(MCX + MR, MCY); c.stroke();
+        c.beginPath(); c.arc(MCX, MCY, 96, 0, Math.PI * 2); c.stroke();
+        c.fillStyle = "rgba(255,255,255,0.85)";
+        c.beginPath(); c.arc(MCX, MCY, 8, 0, Math.PI * 2); c.fill();
+        c.restore();
+
+        // Kale ağı (halkanın dışında, dönen)
+        const ga = state.goalAngle;
+        c.save();
+        c.translate(MCX, MCY);
+        c.rotate(ga);
+        const depth = 118 + state.netPulse * 26;
+        const p1 = { x: Math.cos(-gapHalf) * MR, y: Math.sin(-gapHalf) * MR };
+        const p2 = { x: Math.cos(gapHalf) * MR, y: Math.sin(gapHalf) * MR };
+        const back1 = { x: p1.x + depth, y: p1.y - 26 };
+        const back2 = { x: p2.x + depth, y: p2.y + 26 };
+        c.beginPath();
+        c.moveTo(p1.x, p1.y); c.lineTo(back1.x, back1.y); c.lineTo(back2.x, back2.y); c.lineTo(p2.x, p2.y);
+        c.arc(0, 0, MR, gapHalf, -gapHalf, true);
+        c.closePath();
+        c.fillStyle = "rgba(15, 23, 42, 0.72)";
+        c.fill();
+        c.save();
+        c.clip();
+        c.strokeStyle = "rgba(255,255,255,0.62)";
+        c.lineWidth = 2.5;
+        const wob = state.netPulse * 8;
+        for (let x = MR - 60; x < MR + depth + 30; x += 22) {
+          c.beginPath(); c.moveTo(x + Math.sin(x * 0.3 + state.simTime * 20) * wob, -400); c.lineTo(x, 400); c.stroke();
+        }
+        for (let y = -260; y < 260; y += 22) {
+          c.beginPath(); c.moveTo(MR - 80, y); c.lineTo(MR + depth + 40, y + Math.sin(y * 0.3 + state.simTime * 20) * wob); c.stroke();
+        }
+        c.restore();
+        c.lineWidth = 6;
+        c.strokeStyle = "#ffffff";
+        c.beginPath(); c.moveTo(p1.x, p1.y); c.lineTo(back1.x, back1.y); c.lineTo(back2.x, back2.y); c.lineTo(p2.x, p2.y); c.stroke();
+        c.restore();
+
+        // Saha çizgisi (kale ağzı hariç)
+        c.save();
+        c.lineWidth = 12;
+        c.strokeStyle = "#ffffff";
+        c.shadowColor = "rgba(255,255,255,0.5)"; c.shadowBlur = 10;
+        c.beginPath(); c.arc(MCX, MCY, MR, ga + gapHalf, ga - gapHalf + Math.PI * 2); c.stroke();
+        c.fillStyle = "#ffffff";
+        for (const s of [-1, 1]) {
+          c.beginPath(); c.arc(MCX + Math.cos(ga + s * gapHalf) * MR, MCY + Math.sin(ga + s * gapHalf) * MR, 11, 0, Math.PI * 2); c.fill();
+        }
+        c.restore();
+
+        // Şok dalgaları & kıvılcımlar
+        for (const sw of state.shockwaves) {
+          c.save(); c.globalAlpha = Math.max(0, sw.life / sw.maxLife);
+          c.strokeStyle = sw.color; c.lineWidth = 8;
+          c.beginPath(); c.arc(sw.x, sw.y, sw.r, 0, Math.PI * 2); c.stroke(); c.restore();
+        }
+        for (const p of state.sparks) {
+          c.save(); c.globalAlpha = Math.max(0, p.life / p.maxLife || p.life);
+          c.fillStyle = p.color; c.beginPath(); c.arc(p.x, p.y, p.size || 4, 0, Math.PI * 2); c.fill(); c.restore();
+        }
+
+        // Takımlar
+        const goalHide = state.phase === "goal" ? Math.min(1, state.goalAnim * 1.6) : 0;
+        for (const b of state.badges) {
+          const scorerHidden = state.phase === "goal" && state.goalInfo && b.side === state.goalInfo.side;
+          const alpha = scorerHidden ? 1 - goalHide : state.phase === "goal" ? 0.35 : 1;
+          if (alpha <= 0.02) continue;
+          const isWinner = state.winner && !state.draw && b === state.winner;
+          const scale = isWinner ? 1 + Math.min(1, state.winnerTime * 2) * 0.55 : 1;
+          const dr = b.r * scale;
+          c.save();
+          c.globalAlpha = alpha;
+          for (let i = 0; i < b.trail.length; i++) {
+            const t = b.trail[i];
+            c.globalAlpha = alpha * (i / b.trail.length) * 0.18;
+            c.fillStyle = b.club.c1 || "#ffffff";
+            c.beginPath(); c.arc(t.x, t.y, dr * 0.8, 0, Math.PI * 2); c.fill();
+          }
+          c.globalAlpha = alpha;
+          c.translate(b.x, b.y);
+          c.rotate(b.angle);
+          if (isWinner) {
+            const gl = c.createRadialGradient(0, 0, dr * 0.6, 0, 0, dr * 2.1);
+            gl.addColorStop(0, "rgba(250, 204, 21, 0.55)"); gl.addColorStop(1, "rgba(250, 204, 21, 0)");
+            c.fillStyle = gl; c.beginPath(); c.arc(0, 0, dr * 2.1, 0, Math.PI * 2); c.fill();
+          }
+          c.shadowColor = "rgba(0,0,0,0.55)"; c.shadowBlur = 18; c.shadowOffsetY = 6;
+          c.drawImage(b.sprite, -dr, -dr, dr * 2, dr * 2);
+          c.restore();
+        }
+
+        // Kart bildirimi
+        if (state.cardToast && state.phase === "play") {
+          const k = state.cardToast;
+          const a = Math.min(1, k.t * 3, (2.0 - k.t) * 6);
+          c.save();
+          c.globalAlpha = Math.max(0, a);
+          c.font = "800 34px 'Montserrat', sans-serif";
+          const txt = `${k.name} ${k.label}`.toUpperCase();
+          const w = Math.min(760, c.measureText(txt).width) + 120;
+          const y = MCY + MR - 96;
+          c.fillStyle = "rgba(6, 10, 28, 0.82)";
+          c.beginPath(); c.roundRect(MCX - w / 2, y - 34, w, 68, 34); c.fill();
+          c.fillStyle = k.red ? "#ef4444" : "#facc15";
+          c.beginPath(); c.roundRect(MCX - w / 2 + 26, y - 22, 30, 42, 5); c.fill();
+          c.fillStyle = "#ffffff"; c.textAlign = "left";
+          c.fillText(txt, MCX - w / 2 + 76, y + 2, 740);
+          c.restore();
+        }
+
+        // GOAL! animasyonu
+        if (state.phase === "goal" && state.goalInfo) {
+          const t = state.goalAnim;
+          const s = t < 0.22 ? 0.4 + (t / 0.22) * 0.75 : t < 0.36 ? 1.15 - ((t - 0.22) / 0.14) * 0.15 : 1;
+          const fade = state.phaseTimer < 0.35 ? state.phaseTimer / 0.35 : 1;
+          c.save();
+          c.globalAlpha = fade;
+          c.translate(MCX, MCY - 30);
+          c.scale(s, s);
+          c.textAlign = "center";
+          c.font = "900 208px 'Montserrat', sans-serif";
+          c.shadowColor = "rgba(0,0,0,0.55)"; c.shadowBlur = 30; c.shadowOffsetY = 10;
+          drawOutlinedText(c, "GOAL!", 0, 0, "#ffffff", "#dc2626", 34);
+          c.shadowBlur = 0; c.shadowOffsetY = 0;
+          drawOutlinedText(c, "GOAL!", 0, 0, "#ffffff", state.goalInfo.color || "#dc2626", 14);
+          c.restore();
+          c.save();
+          c.globalAlpha = fade * Math.min(1, Math.max(0, (t - 0.25) * 4));
+          c.textAlign = "center";
+          c.font = "900 70px 'Montserrat', sans-serif";
+          const line = `${state.goalInfo.name} ${state.goalInfo.label}`.toUpperCase();
+          const ls = fitText(c, line, 940, c.font);
+          c.translate(MCX, MCY + 110); c.scale(ls, ls);
+          c.shadowColor = "rgba(0,0,0,0.6)"; c.shadowBlur = 18;
+          drawOutlinedText(c, line, 0, 0, "#ffffff", "#0f172a", 14);
+          c.restore();
+        }
+
+        // Kick-off / Devre arası
+        if (state.phase === "intro" || state.phase === "halftime") {
+          const txt = state.phase === "intro" ? "KICK OFF" : "HALF TIME";
+          const a = Math.min(1, state.phaseTimer * 3);
+          c.save();
+          c.globalAlpha = a;
+          c.fillStyle = "rgba(6, 10, 28, 0.55)";
+          c.beginPath(); c.arc(MCX, MCY, MR, 0, Math.PI * 2); c.fill();
+          c.textAlign = "center";
+          c.font = "900 118px 'Montserrat', sans-serif";
+          c.shadowColor = "rgba(0,0,0,0.6)"; c.shadowBlur = 20;
+          drawOutlinedText(c, txt, MCX, MCY - 10, "#ffffff", "#0f172a", 12);
+          if (state.phase === "halftime") {
+            c.font = "900 64px 'Montserrat', sans-serif";
+            c.fillStyle = "#facc15";
+            c.fillText(`${home.club.short} ${state.score.home} - ${state.score.away} ${away.club.short}`, MCX, MCY + 92, 760);
+          }
+          c.restore();
+        }
+
+        // Maç sonu
+        if (state.winner) {
+          const a = Math.min(1, state.winnerTime * 2.5);
+          c.save();
+          c.globalAlpha = a * 0.6;
+          c.fillStyle = "#060a1c";
+          c.beginPath(); c.arc(MCX, MCY, MR, 0, Math.PI * 2); c.fill();
+          c.restore();
+          // kazanan/beraberlik logoları üstte tekrar çizilir
+          for (const b of state.badges) {
+            const isWinner = !state.draw && b === state.winner;
+            const dr = b.r * (isWinner ? 1 + Math.min(1, state.winnerTime * 2) * 0.55 : 0.8);
+            c.save();
+            c.globalAlpha = isWinner || state.draw ? 1 : 0.55;
+            c.shadowColor = isWinner ? "rgba(250, 204, 21, 0.8)" : "rgba(0,0,0,0.5)"; c.shadowBlur = isWinner ? 40 : 14;
+            c.drawImage(b.sprite, b.x - dr, b.y - dr, dr * 2, dr * 2);
+            c.restore();
+          }
+          c.save();
+          c.globalAlpha = a;
+          c.textAlign = "center";
+          c.font = "900 100px 'Montserrat', sans-serif";
+          c.shadowColor = "rgba(0,0,0,0.6)"; c.shadowBlur = 20;
+          drawOutlinedText(c, "FULL TIME", MCX, MCY - 190, "#facc15", "#0f172a", 12);
+          c.font = "900 54px 'Montserrat', sans-serif";
+          c.fillStyle = "#ffffff";
+          const res = state.draw ? "DRAW" : `${state.winner.club.name} WIN`;
+          c.fillText(res, MCX, MCY - 105, 760);
+          c.restore();
+        }
+
+        // Konfeti
+        for (const p of state.confetti) {
+          c.save(); c.translate(p.x, p.y); c.rotate(p.rot);
+          c.fillStyle = p.color; c.fillRect(-p.w / 2, -p.h / 2, p.w, p.h); c.restore();
+        }
+
+        // Alt bilgi
+        if (m.footer) {
+          c.save();
+          c.textAlign = "center";
+          c.font = "800 38px 'Montserrat', sans-serif";
+          c.fillStyle = "#facc15";
+          c.shadowColor = "rgba(0,0,0,0.6)"; c.shadowBlur = 8;
+          c.fillText(m.footer.toUpperCase(), MCX, 1540, 940);
+          c.restore();
+        }
+        if (cfg.watermark && cfg.watermark.trim()) drawWatermark(c, cfg.watermark.trim(), theme, 1612);
+        if (cfg.showViralHook && cfg.viralHook.trim()) {
+          c.save();
+          c.textAlign = "center"; c.textBaseline = "middle";
+          const hookText = cfg.viralHook.trim();
+          c.font = "800 28px 'Inter', sans-serif";
+          const pillW = Math.min(960, c.measureText(hookText).width + 70);
+          c.fillStyle = "rgba(15, 23, 42, 0.78)";
+          c.strokeStyle = "rgba(250, 204, 21, 0.45)"; c.lineWidth = 2.5;
+          c.beginPath(); c.roundRect((BASE_W - pillW) / 2, 1765, pillW, 58, 29); c.fill(); c.stroke();
+          c.fillStyle = "#fef08a";
+          c.fillText(hookText, BASE_W / 2, 1795, 910);
+          c.restore();
+        }
+        c.restore();
+      }
