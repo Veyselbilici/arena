@@ -1,4 +1,14 @@
 "use strict";
+      function lethalHitAllowed(state, cfg) {
+        const target = cfg.targetDuration || 0;
+        if (!target) return true;
+        const alive = state.badges.filter((b) => !b.eliminated).length;
+        if (alive <= 2) return true;
+        const prePhase = Math.max(12, target - 15);
+        const gap = (prePhase / Math.max(1, state.totalClubs - 2)) * 0.78;
+        return state.timeSinceLastElim >= gap;
+      }
+
       function applyBladeHit(state, attacker, victim, cfg, emitAudio) {
         victim.hitCooldown = 0.48;
         victim.flashTimer = 0.24;
@@ -10,7 +20,7 @@
         attacker.bladeDir *= -1;
 
         const isProtectedVictim = state.selectedWinnerKey !== "random" && victim.club.key === state.selectedWinnerKey;
-        if (isProtectedVictim && victim.hp <= 1) {
+        if ((isProtectedVictim && victim.hp <= 1) || (victim.hp <= 1 && !lethalHitAllowed(state, cfg))) {
           // Şampiyon kılıç savunması (Parry)
           spawnSparks(state, victim.x, victim.y, "#facc15", 12, 340);
           emitAudio({ type: "clang" });
@@ -456,8 +466,9 @@
           }
 
           // SAATLİ BOMBA GÖSTERGESİ
-          if (state.mode === "bomb" && state.bombHolder === b && !state.winner) {
-            const frac = Math.max(0, state.bombTimer / state.bombMaxTimer);
+          const bm = state.mode === "bomb" && !state.winner ? bombOf(state, b) : null;
+          if (bm) {
+            const frac = Math.max(0, bm.timer / bm.max);
             const pulse = 1 + Math.sin(state.simTime * (12 + (1 - frac) * 24)) * 0.12;
             // Kırmızı/Turuncu geri sayım halkası
             c.beginPath();
@@ -484,7 +495,7 @@
             c.fillStyle = "#fef08a";
             c.textAlign = "center";
             c.textBaseline = "middle";
-            c.fillText(Math.max(0.1, state.bombTimer).toFixed(1), 0, 1);
+            c.fillText(Math.max(0.1, bm.timer).toFixed(1), 0, 1);
             c.restore();
           }
 
