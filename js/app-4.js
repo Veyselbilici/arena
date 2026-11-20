@@ -1,4 +1,673 @@
 "use strict";
+      function applyBladeHit(state, attacker, victim, cfg, emitAudio) {
+        victim.hitCooldown = 0.48;
+        victim.flashTimer = 0.24;
+        const dx = victim.x - attacker.x;
+        const dy = victim.y - attacker.y;
+        const d = Math.hypot(dx, dy) || 1;
+        victim.vx += (dx / d) * 340;
+        victim.vy += (dy / d) * 340;
+        attacker.bladeDir *= -1;
+
+        const isProtectedVictim = state.selectedWinnerKey !== "random" && victim.club.key === state.selectedWinnerKey;
+        if (isProtectedVictim && victim.hp <= 1) {
+          // Şampiyon kılıç savunması (Parry)
+          spawnSparks(state, victim.x, victim.y, "#facc15", 12, 340);
+          emitAudio({ type: "clang" });
+          return;
+        }
+
+        victim.hp -= 1;
+        spawnSparks(state, victim.x, victim.y, "#fb7185", 14, 340);
+        emitAudio({ type: "slash" });
+        state.shakeIntensity = Math.max(state.shakeIntensity, 6);
+
+        if (victim.hp <= 0) {
+          attacker.kills += 1;
+          spawnShockwave(state, victim.x, victim.y, "#f43f5e", 160);
+          eliminateBadge(
+            state, victim, cfg, emitAudio,
+            `${attacker.club.name} ⚔️ ${victim.club.name}`,
+            "#f43f5e", true
+          );
+        }
+      }
+
+      /* =========================================================================
+         8. 1080×1920 YAYIN KALİTESİNDE CANVAS ÇİZİM MOTORU
+         ========================================================================= */
+      function drawSpacedText(c, text, x, y, spacing) {
+        const chars = text.split("");
+        let totalW = 0;
+        const widths = chars.map((ch) => {
+          const w = c.measureText(ch).width;
+          totalW += w + spacing;
+          return w;
+        });
+        totalW -= spacing;
+        let curX = x - totalW / 2;
+        c.textAlign = "left";
+        chars.forEach((ch, idx) => {
+          c.fillText(ch, curX, y);
+          curX += widths[idx] + spacing;
+        });
+        c.textAlign = "center";
+      }
+
+      function drawWatermark(c, text, theme) {
+        const wm = theme.wm || { accent: "#cbd5e1", glyph: "dot" };
+        const y = 1470;
+        c.save();
+        c.globalAlpha = 0.72;
+        c.font = "700 25px 'Montserrat', sans-serif";
+        c.textBaseline = "middle";
+        const label = text.toUpperCase();
+        const spacing = 5;
+        let tw = 0;
+        for (const ch of label) tw += c.measureText(ch).width + spacing;
+        tw -= spacing;
+        const gW = 26;
+        const total = gW + 14 + tw;
+        let x = BASE_W / 2 - total / 2;
+        const gx = x + gW / 2;
+        c.fillStyle = wm.accent;
+        c.strokeStyle = wm.accent;
+        c.lineWidth = 3;
+        c.shadowColor = "rgba(0,0,0,0.7)";
+        c.shadowBlur = 8;
+        if (wm.glyph === "star") {
+          c.beginPath();
+          for (let i = 0; i < 10; i++) { const r = i % 2 ? 4.5 : 11; const a = -Math.PI / 2 + (i * Math.PI) / 5; c.lineTo(gx + Math.cos(a) * r, y + Math.sin(a) * r); }
+          c.closePath(); c.fill();
+        } else if (wm.glyph === "bar") {
+          c.fillRect(gx - 12, y - 3, 24, 6);
+        } else if (wm.glyph === "crescent") {
+          c.beginPath(); c.arc(gx, y, 11, 0, Math.PI * 2); c.fill();
+          c.globalCompositeOperation = "destination-out";
+          c.beginPath(); c.arc(gx + 4.5, y, 8.6, 0, Math.PI * 2); c.fill();
+          c.globalCompositeOperation = "source-over";
+        } else if (wm.glyph === "diamond") {
+          c.beginPath(); c.moveTo(gx, y - 11); c.lineTo(gx + 9, y); c.lineTo(gx, y + 11); c.lineTo(gx - 9, y); c.closePath(); c.fill();
+        } else if (wm.glyph === "chevron") {
+          c.beginPath(); c.moveTo(gx - 9, y - 8); c.lineTo(gx + 2, y); c.lineTo(gx - 9, y + 8); c.stroke();
+          c.beginPath(); c.moveTo(gx - 1, y - 8); c.lineTo(gx + 10, y); c.lineTo(gx - 1, y + 8); c.stroke();
+        } else {
+          c.beginPath(); c.arc(gx, y, 7, 0, Math.PI * 2); c.fill();
+        }
+        x += gW + 14;
+        c.fillStyle = "rgba(241, 245, 249, 0.92)";
+        for (const ch of label) {
+          c.fillText(ch, x, y + 1);
+          x += c.measureText(ch).width + spacing;
+        }
+        c.restore();
+      }
+
+      // Lig logoları (ESPN)
+      const leagueLogoCache = {};
+      function getLeagueLogo(slug) {
+        if (!slug) return null;
+        const entry = leagueLogoCache[slug];
+        if (entry) return entry.ready ? entry.img : null;
+        leagueLogoCache[slug] = { ready: false, img: null };
+        fetch(`https://sports.core.api.espn.com/v2/sports/soccer/leagues/${slug}`)
+          .then((r) => r.json())
+          .then((l) => {
+            const logos = l.logos || [];
+            const pick = logos.find((x) => (x.rel || []).includes("dark")) || logos[0];
+            if (!pick) return;
+            const img = new Image();
+            img.crossOrigin = "anonymous";
+            img.onload = () => {
+              try {
+                const t = document.createElement("canvas"); t.width = t.height = 2;
+                t.getContext("2d").drawImage(img, 0, 0, 2, 2); t.getContext("2d").getImageData(0, 0, 1, 1);
+                leagueLogoCache[slug] = { ready: true, img };
+              } catch (_) {}
+            };
+            img.src = pick.href.replace(/^http:/, "https:");
+          })
+          .catch(() => {});
+        return null;
+      }
+
+      function renderSimState(c, state, cfg, targetW = BASE_W, targetH = BASE_H) {
+        const theme = THEMES[cfg.theme] || THEMES.ucl;
+        c.save();
+        if (targetW !== BASE_W || targetH !== BASE_H) {
+          c.scale(targetW / BASE_W, targetH / BASE_H);
+        }
+
+        if (state.shakeIntensity > 0.2) {
+          c.translate(
+            (Math.random() - 0.5) * state.shakeIntensity,
+            (Math.random() - 0.5) * state.shakeIntensity
+          );
+        }
+
+        // 1. Tema Arka Planı
+        const bgGrad = c.createRadialGradient(BASE_W * 0.5, BASE_H * 0.36, 60, BASE_W * 0.5, BASE_H * 0.5, BASE_H * 0.78);
+        bgGrad.addColorStop(0.0, theme.bg0);
+        bgGrad.addColorStop(0.36, theme.bg1);
+        bgGrad.addColorStop(0.76, theme.bg2);
+        bgGrad.addColorStop(1.0, theme.bg3);
+        c.fillStyle = bgGrad;
+        c.fillRect(-25, -25, BASE_W + 50, BASE_H + 50);
+
+        // Üst stadyum ışık huzmeleri
+        c.save();
+        const rayGrad = c.createLinearGradient(0, 0, 0, 740);
+        rayGrad.addColorStop(0, theme.rayColor);
+        rayGrad.addColorStop(1, "rgba(0,0,0,0)");
+        c.fillStyle = rayGrad;
+        for (let i = -1; i <= 1; i++) {
+          c.beginPath();
+          c.moveTo(BASE_W / 2 + i * 260, -20);
+          c.lineTo(BASE_W / 2 + i * 480 + 180, 760);
+          c.lineTo(BASE_W / 2 + i * 480 - 180, 760);
+          c.closePath();
+          c.fill();
+        }
+        c.restore();
+
+        // Yıldızlar / Ateş Kıvılcımları
+        for (const s of state.bgParticles) {
+          const tw = 0.5 + 0.5 * Math.sin(state.simTime * 2.4 + s.phase);
+          const col = theme.emberMode ? `rgba(251, 146, 60, ${s.alpha * tw})` : `rgba(219, 234, 254, ${s.alpha * tw})`;
+          if (s.bokeh) {
+            const g = c.createRadialGradient(s.x, s.y, 0, s.x, s.y, s.r * 3.8);
+            g.addColorStop(0, col);
+            g.addColorStop(1, "rgba(0,0,0,0)");
+            c.fillStyle = g;
+            c.beginPath();
+            c.arc(s.x, s.y, s.r * 3.8, 0, Math.PI * 2);
+            c.fill();
+          } else {
+            c.fillStyle = col;
+            c.beginPath();
+            c.arc(s.x, s.y, s.r, 0, Math.PI * 2);
+            c.fill();
+          }
+        }
+
+        const R = state.ringRadius;
+        const activeCount = state.badges.filter((b) => !b.eliminated).length;
+        const finalTension = activeCount <= 2 && !state.winner;
+
+        // Arena Arkası Aura
+        const aura = c.createRadialGradient(RING_CX, RING_CY, 80, RING_CX, RING_CY, R + 135);
+        aura.addColorStop(0, finalTension ? "rgba(250, 204, 21, 0.30)" : theme.auraColor);
+        aura.addColorStop(0.68, "rgba(8, 12, 32, 0.45)");
+        aura.addColorStop(1, "rgba(0, 0, 0, 0)");
+        c.fillStyle = aura;
+        c.beginPath();
+        c.arc(RING_CX, RING_CY, R + 135, 0, Math.PI * 2);
+        c.fill();
+
+        // Arena İçi Zemin + Merkez Kupa
+        c.save();
+        c.beginPath();
+        c.arc(RING_CX, RING_CY, R, 0, Math.PI * 2);
+        c.fillStyle = "rgba(3, 6, 20, 0.65)";
+        c.fill();
+        c.clip();
+
+        // Kupa arkası spot ışığı
+        const spot = c.createRadialGradient(RING_CX, RING_CY - 40, 20, RING_CX, RING_CY, R * 0.95);
+        spot.addColorStop(0, "rgba(255,255,255,0.10)");
+        spot.addColorStop(0.5, theme.auraColor);
+        spot.addColorStop(1, "rgba(0,0,0,0)");
+        c.fillStyle = spot;
+        c.fillRect(RING_CX - R, RING_CY - R, R * 2, R * 2);
+
+        const trophyAlpha = 0.42 + Math.sin(state.simTime * 1.6) * 0.04 + (state.winner ? 0.38 : 0);
+        c.save();
+        c.globalAlpha = Math.min(0.95, trophyAlpha);
+        const customTrophyImg = customTrophies[cfg.theme];
+        if (customTrophyImg) {
+          const sc = Math.min(500 / customTrophyImg.naturalWidth, 560 / customTrophyImg.naturalHeight);
+          const tw = customTrophyImg.naturalWidth * sc;
+          const th = customTrophyImg.naturalHeight * sc;
+          c.drawImage(customTrophyImg, RING_CX - tw / 2, RING_CY - th / 2 + 12, tw, th);
+        } else {
+          const tCanv = getTrophyCanvas(theme.trophy);
+          if (tCanv) c.drawImage(tCanv, RING_CX - 280, RING_CY - 310, 560, 640);
+        }
+        c.restore();
+
+        // Kupa ışık süpürmesi
+        const sweepCycle = (state.simTime * 0.35) % 1;
+        if (sweepCycle < 0.45) {
+          const sweepX = RING_CX - 340 + (sweepCycle / 0.45) * 680;
+          const sg = c.createLinearGradient(sweepX - 70, RING_CY - 250, sweepX + 70, RING_CY + 250);
+          sg.addColorStop(0, "rgba(255,255,255,0)");
+          sg.addColorStop(0.5, "rgba(255,255,255,0.09)");
+          sg.addColorStop(1, "rgba(255,255,255,0)");
+          c.fillStyle = sg;
+          c.fillRect(RING_CX - R, RING_CY - R, R * 2, R * 2);
+        }
+        c.restore();
+
+        // 2. Üst Başlıklar & Kalan Kulüp Kapsülü
+        c.save();
+        c.textAlign = "center";
+
+        // Lig logosu
+        if (cfg.showLeagueLogo) {
+          const lg = getLeagueLogo(cfg.leagueSlug || theme.leagueSlug);
+          if (lg) {
+            const box = 96;
+            const sc = Math.min(box / lg.naturalWidth, box / lg.naturalHeight);
+            const w = lg.naturalWidth * sc, h = lg.naturalHeight * sc;
+            c.save();
+            c.shadowColor = "rgba(0,0,0,0.6)";
+            c.shadowBlur = 14;
+            c.drawImage(lg, BASE_W / 2 - w / 2, 136 - h / 2, w, h);
+            c.restore();
+          }
+        }
+
+        c.font = "800 34px 'Montserrat', sans-serif";
+        c.fillStyle = theme.subColor;
+        c.shadowColor = theme.subColor + "66";
+        c.shadowBlur = 16;
+        drawSpacedText(c, (cfg.subTitle || theme.subDefault).toUpperCase(), BASE_W / 2, 224, 7.2);
+
+        c.font = "900 88px 'Montserrat', sans-serif";
+        c.fillStyle = "#ffffff";
+        c.shadowColor = "rgba(56, 189, 248, 0.35)";
+        c.shadowBlur = 24;
+        c.fillText((cfg.mainTitle || "WHO SURVIVES?").toUpperCase(), BASE_W / 2, 326);
+
+        const pillScale = 1 + Math.sin(state.pillPopAnim * Math.PI) * 0.08;
+        c.save();
+        c.translate(BASE_W / 2, 408);
+        c.scale(pillScale, pillScale);
+        c.fillStyle = "rgba(9, 15, 42, 0.86)";
+        c.strokeStyle = finalTension ? "rgba(250, 204, 21, 0.92)" : "rgba(226, 232, 240, 0.72)";
+        c.lineWidth = 3;
+        c.beginPath();
+        c.roundRect(-245, -34, 490, 68, 34);
+        c.fill();
+        c.stroke();
+
+        c.font = "800 31px 'Inter', sans-serif";
+        c.fillStyle = finalTension ? "#fef08a" : "#f8fafc";
+        c.textBaseline = "middle";
+        const modeTag = state.slowMoActive ? "⚡ FINAL DUEL • 2 CLUBS" : `REMAINING CLUBS: ${activeCount}`;
+        c.fillText(modeTag, 0, 1);
+        c.restore();
+        c.restore();
+
+        // 3. ÖLÜM LAZERİ IŞINLARI (Laser Modu)
+        if (state.mode === "laser" && !state.winner) {
+          const beams = cfg.laserCount === 2 ? [state.laserAngle, state.laserAngle + Math.PI] : [state.laserAngle];
+          c.save();
+          for (const bAng of beams) {
+            const lx = RING_CX + Math.cos(bAng) * R;
+            const ly = RING_CY + Math.sin(bAng) * R;
+            // Dış neon uyarı parlaması
+            c.beginPath();
+            c.moveTo(RING_CX, RING_CY);
+            c.lineTo(lx, ly);
+            c.strokeStyle = "rgba(34, 211, 238, 0.35)";
+            c.lineWidth = 26;
+            c.lineCap = "round";
+            c.stroke();
+            // İç lazer çekirdeği
+            c.beginPath();
+            c.moveTo(RING_CX, RING_CY);
+            c.lineTo(lx, ly);
+            c.strokeStyle = "#ffffff";
+            c.lineWidth = 8;
+            c.shadowColor = "#06b6d4";
+            c.shadowBlur = 24;
+            c.stroke();
+          }
+          // Merkez lazer çekirdeği
+          c.beginPath();
+          c.arc(RING_CX, RING_CY, 22, 0, Math.PI * 2);
+          c.fillStyle = "#06b6d4";
+          c.shadowColor = "#22d3ee";
+          c.shadowBlur = 28;
+          c.fill();
+          c.beginPath();
+          c.arc(RING_CX, RING_CY, 10, 0, Math.PI * 2);
+          c.fillStyle = "#ffffff";
+          c.fill();
+          c.restore();
+        }
+
+        // 4. Şampiyonluk Dönen Altın Işık Huzmeleri
+        if (state.winner) {
+          c.save();
+          c.translate(RING_CX, RING_CY - 20);
+          c.rotate(state.winnerTime * 0.45);
+          for (let i = 0; i < 14; i++) {
+            c.rotate((Math.PI * 2) / 14);
+            const g = c.createLinearGradient(0, 0, 0, -390);
+            g.addColorStop(0, "rgba(250, 204, 21, 0.38)");
+            g.addColorStop(1, "rgba(250, 204, 21, 0)");
+            c.fillStyle = g;
+            c.beginPath();
+            c.moveTo(0, 0); c.lineTo(-28, -390); c.lineTo(28, -390);
+            c.closePath();
+            c.fill();
+          }
+          c.restore();
+        }
+
+        // 5. Elenenlerin Kuyruklu İzleri (Ring Modu)
+        for (const b of state.badges) {
+          if (!b.eliminated || b.removed || b.trail.length < 2) continue;
+          for (let i = 0; i < b.trail.length; i++) {
+            const pt = b.trail[i];
+            const ratio = 1 - i / b.trail.length;
+            c.fillStyle = `rgba(251, 113, 133, ${ratio * 0.34})`;
+            c.beginPath();
+            c.arc(pt.x, pt.y, b.r * 0.55 * ratio, 0, Math.PI * 2);
+            c.fill();
+          }
+        }
+
+        // 6. Kulüp Armaları + Mod Özel Görselleri (Kılıçlar, Can Kalkanları, Bomba)
+        for (const b of state.badges) {
+          if (b.removed) continue;
+
+          // Kılıç Savaşı Enerji Kılıcı
+          if (state.mode === "blade" && !b.eliminated && b !== state.winner) {
+            c.save();
+            c.translate(b.x, b.y);
+            c.rotate(b.bladeAngle);
+            const bladeLen = cfg.bladeLength;
+            // Kılıç kabzası
+            c.fillStyle = "#facc15";
+            c.fillRect(b.r - 4, -5, 10, 10);
+            // Parlayan kılıç namlusu
+            const bg = c.createLinearGradient(b.r + 4, 0, b.r + bladeLen, 0);
+            bg.addColorStop(0, "#ffffff");
+            bg.addColorStop(0.5, b.kills > 0 ? "#fde047" : "#38bdf8");
+            bg.addColorStop(1, b.kills > 0 ? "#f97316" : "#818cf8");
+            c.fillStyle = bg;
+            c.shadowColor = b.kills > 0 ? "#f59e0b" : "#38bdf8";
+            c.shadowBlur = 14;
+            c.beginPath();
+            c.moveTo(b.r + 4, -6);
+            c.lineTo(b.r + bladeLen - 8, -4);
+            c.lineTo(b.r + bladeLen + 4, 0);
+            c.lineTo(b.r + bladeLen - 8, 4);
+            c.lineTo(b.r + 4, 6);
+            c.closePath();
+            c.fill();
+            c.restore();
+          }
+
+          c.save();
+          c.translate(b.x, b.y);
+
+          let drawR = b.r;
+          if (b === state.winner) {
+            const grow = 1 + Math.min(state.winnerTime * 1.45, 1.85);
+            drawR = b.r * grow;
+            const halo = c.createRadialGradient(0, 0, drawR * 0.5, 0, 0, drawR * 2.1);
+            halo.addColorStop(0, "rgba(250, 204, 21, 0.72)");
+            halo.addColorStop(0.55, "rgba(250, 204, 21, 0.2)");
+            halo.addColorStop(1, "rgba(250, 204, 21, 0)");
+            c.fillStyle = halo;
+            c.beginPath();
+            c.arc(0, 0, drawR * 2.1, 0, Math.PI * 2);
+            c.fill();
+          }
+
+          // Hasar / Kalkan Halkaları (Blade & Laser)
+          if (!b.eliminated && b !== state.winner && (state.mode === "blade" || state.mode === "laser")) {
+            const segs = b.maxHp;
+            const gapA = 0.28;
+            const segA = (Math.PI * 2) / segs;
+            for (let s = 0; s < segs; s++) {
+              c.beginPath();
+              c.arc(0, 0, drawR + 6, s * segA + gapA / 2 - Math.PI / 2, (s + 1) * segA - gapA / 2 - Math.PI / 2);
+              c.lineWidth = 4.5;
+              c.lineCap = "round";
+              if (s < b.hp) {
+                c.strokeStyle = b.hp === 1 ? "#f97316" : (state.mode === "laser" ? "#38bdf8" : "#34d399");
+              } else {
+                c.strokeStyle = "rgba(148, 163, 184, 0.22)";
+              }
+              c.stroke();
+            }
+          }
+
+          // Kulüp Arması
+          c.save();
+          c.rotate(b.angle);
+          c.shadowColor = b.flashTimer > 0 ? "rgba(244, 63, 94, 0.95)" : "rgba(0, 0, 0, 0.62)";
+          c.shadowBlur = b.flashTimer > 0 ? 24 : 12;
+          c.shadowOffsetY = 4;
+          c.drawImage(b.sprite, -drawR, -drawR, drawR * 2, drawR * 2);
+          c.restore();
+
+          // Hasar kırmızı flaşı
+          if (b.flashTimer > 0) {
+            c.fillStyle = `rgba(244, 63, 94, ${b.flashTimer * 2.1})`;
+            c.beginPath();
+            c.arc(0, 0, drawR, 0, Math.PI * 2);
+            c.fill();
+          }
+
+          // SAATLİ BOMBA GÖSTERGESİ
+          if (state.mode === "bomb" && state.bombHolder === b && !state.winner) {
+            const frac = Math.max(0, state.bombTimer / state.bombMaxTimer);
+            const pulse = 1 + Math.sin(state.simTime * (12 + (1 - frac) * 24)) * 0.12;
+            // Kırmızı/Turuncu geri sayım halkası
+            c.beginPath();
+            c.arc(0, 0, drawR + 12, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * frac);
+            c.strokeStyle = frac < 0.33 ? "#ef4444" : "#facc15";
+            c.lineWidth = 7;
+            c.lineCap = "round";
+            c.shadowColor = "#ef4444";
+            c.shadowBlur = 18;
+            c.stroke();
+
+            // Bomba ikonu + süre
+            c.save();
+            c.translate(drawR * 0.72, -drawR * 0.72);
+            c.scale(pulse, pulse);
+            c.fillStyle = "#111827";
+            c.strokeStyle = "#ef4444";
+            c.lineWidth = 3;
+            c.beginPath();
+            c.arc(0, 0, 20, 0, Math.PI * 2);
+            c.fill();
+            c.stroke();
+            c.font = "900 17px 'Inter', sans-serif";
+            c.fillStyle = "#fef08a";
+            c.textAlign = "center";
+            c.textBaseline = "middle";
+            c.fillText(Math.max(0.1, state.bombTimer).toFixed(1), 0, 1);
+            c.restore();
+          }
+
+          c.restore();
+        }
+
+        // 7. Şok Dalgaları & Kıvılcımlar
+        for (const sw of state.shockwaves) {
+          c.save();
+          c.globalAlpha = Math.max(0, sw.life / sw.maxLife);
+          c.strokeStyle = sw.color;
+          c.lineWidth = 8 * (sw.life / sw.maxLife);
+          c.beginPath();
+          c.arc(sw.x, sw.y, sw.r, 0, Math.PI * 2);
+          c.stroke();
+          c.restore();
+        }
+        for (const p of state.sparks) {
+          c.fillStyle = p.color;
+          c.globalAlpha = Math.max(0, p.life / p.maxLife);
+          c.beginPath();
+          c.arc(p.x, p.y, p.r, 0, Math.PI * 2);
+          c.fill();
+        }
+        c.globalAlpha = 1;
+
+        // 8. Arena Dış Halkası (Ring Modunda Boşluklu, Diğer Modlarda Kapalı Neon Halka)
+        c.save();
+        c.beginPath();
+        c.arc(RING_CX, RING_CY, R + 18, 0, Math.PI * 2);
+        c.strokeStyle = state.ringFlashAnim > 0
+          ? `rgba(251, 113, 133, ${0.32 + state.ringFlashAnim * 0.55})`
+          : finalTension ? "rgba(250, 204, 21, 0.45)" : theme.outerRing;
+        c.lineWidth = 3.5;
+        c.stroke();
+
+        c.strokeStyle = state.ringFlashAnim > 0.25 ? "#ffe4e6" : (finalTension ? "#fef08a" : theme.ringStroke);
+        c.lineWidth = 11;
+        c.lineCap = "round";
+        c.shadowColor = state.ringFlashAnim > 0.25 ? "rgba(244, 63, 94, 0.95)" : (finalTension ? "rgba(250, 204, 21, 0.95)" : theme.ringGlow);
+        c.shadowBlur = 24 + state.ringFlashAnim * 18;
+
+        if (state.mode === "ring") {
+          const gapRad = (cfg.gapDegrees * Math.PI) / 180;
+          const half = gapRad / 2;
+          if (cfg.doubleGap) {
+            // İki yay parçası
+            c.beginPath();
+            c.arc(RING_CX, RING_CY, R, state.ringAngle + half, state.ringAngle + Math.PI - half);
+            c.stroke();
+            c.beginPath();
+            c.arc(RING_CX, RING_CY, R, state.ringAngle + Math.PI + half, state.ringAngle + Math.PI * 2 - half);
+            c.stroke();
+          } else {
+            const arcStart = state.ringAngle + half;
+            const arcEnd = state.ringAngle + Math.PI * 2 - half;
+            c.beginPath();
+            c.arc(RING_CX, RING_CY, R, arcStart, arcEnd);
+            c.stroke();
+            for (const ea of [arcStart, arcEnd]) {
+              c.beginPath();
+              c.arc(RING_CX + Math.cos(ea) * R, RING_CY + Math.sin(ea) * R, 11, 0, Math.PI * 2);
+              c.fillStyle = "#ffffff";
+              c.fill();
+            }
+          }
+        } else {
+          c.beginPath();
+          c.arc(RING_CX, RING_CY, R, 0, Math.PI * 2);
+          c.stroke();
+        }
+        c.restore();
+
+        // 9. Son 2 Ağır Çekim Altın Vinyet Efekti
+        if (state.slowMoActive) {
+          const vig = c.createRadialGradient(BASE_W / 2, BASE_H / 2, BASE_W * 0.35, BASE_W / 2, BASE_H / 2, BASE_H * 0.65);
+          vig.addColorStop(0, "rgba(0,0,0,0)");
+          vig.addColorStop(1, "rgba(250, 204, 21, 0.24)");
+          c.fillStyle = vig;
+          c.fillRect(0, 0, BASE_W, BASE_H);
+        }
+
+        // 10. Alt Duyuru Alanı (Eleme / Şampiyonluk + Mini Elenenler Şeridi + Viral Hook)
+        const feedY = 1585;
+        if (state.winner) {
+          for (const p of state.confetti) {
+            c.save();
+            c.translate(p.x, p.y);
+            c.rotate(p.rot);
+            c.fillStyle = p.color;
+            c.fillRect(-p.w / 2, -p.h / 2, p.w, p.h);
+            c.restore();
+          }
+
+          const pop = Math.min(1, state.winnerTime * 3.5);
+          c.save();
+          c.translate(BASE_W / 2, feedY);
+          c.scale(0.84 + 0.16 * pop, 0.84 + 0.16 * pop);
+          c.textAlign = "center";
+
+          c.font = "900 54px 'Montserrat', sans-serif";
+          c.fillStyle = "#facc15";
+          c.shadowColor = "rgba(250, 204, 21, 0.78)";
+          c.shadowBlur = 28;
+          c.fillText("🏆 CHAMPION! 🏆", 0, -24);
+
+          c.font = "900 62px 'Montserrat', sans-serif";
+          c.fillStyle = "#ffffff";
+          c.shadowColor = "rgba(56, 189, 248, 0.55)";
+          c.shadowBlur = 20;
+          c.fillText(state.winner.club.name, 0, 48);
+          c.restore();
+        } else if (state.bannerSubBadge) {
+          const slideY = state.bannerAnim * 24;
+          const alpha = Math.min(1, 1.35 - state.bannerAnim * 0.7);
+          c.save();
+          c.globalAlpha = Math.max(0.28, alpha);
+          c.translate(BASE_W / 2, feedY + slideY);
+
+          c.font = "900 42px 'Montserrat', sans-serif";
+          const txt = state.bannerText;
+          const textW = Math.min(760, c.measureText(txt).width);
+          const iconSize = 86;
+          const gapX = 22;
+          const totalW = iconSize + gapX + textW;
+          const startX = -totalW / 2;
+
+          c.shadowColor = "rgba(0,0,0,0.6)";
+          c.shadowBlur = 12;
+          c.drawImage(state.bannerSubBadge.sprite, startX, -iconSize / 2, iconSize, iconSize);
+
+          c.textAlign = "left";
+          c.textBaseline = "middle";
+          c.fillStyle = state.bannerAccent;
+          c.shadowColor = state.bannerAccent;
+          c.shadowBlur = 18;
+          c.fillText(txt, startX + iconSize + gapX, 2, 760);
+          c.restore();
+
+          // Mini Elenenler Şeridi
+          const recent = state.eliminatedList.slice(0, 9);
+          if (recent.length > 0) {
+            const miniSize = 46;
+            const miniGap = 15;
+            const rowW = recent.length * miniSize + (recent.length - 1) * miniGap;
+            let mx = (BASE_W - rowW) / 2;
+            c.save();
+            recent.forEach((eb, i) => {
+              c.globalAlpha = Math.max(0.22, 0.85 - i * 0.08);
+              c.drawImage(eb.sprite, mx, 1672, miniSize, miniSize);
+              mx += miniSize + miniGap;
+            });
+            c.restore();
+          }
+        }
+
+        // Viral Alt Etkileşim Kancası (Hook)
+        if (cfg.showViralHook && cfg.viralHook.trim()) {
+          c.save();
+          c.textAlign = "center";
+          c.textBaseline = "middle";
+          const hookText = cfg.viralHook.trim();
+          c.font = "800 28px 'Inter', sans-serif";
+          const pillW = Math.min(960, c.measureText(hookText).width + 70);
+          c.fillStyle = "rgba(15, 23, 42, 0.78)";
+          c.strokeStyle = "rgba(250, 204, 21, 0.45)";
+          c.lineWidth = 2.5;
+          c.beginPath();
+          c.roundRect((BASE_W - pillW) / 2, 1765, pillW, 58, 29);
+          c.fill();
+          c.stroke();
+
+          c.fillStyle = "#fef08a";
+          c.fillText(hookText, BASE_W / 2, 1795, 910);
+          c.restore();
+        }
+
+        // Filigran (tema başına ayrı, abartısız)
+        if (cfg.watermark && cfg.watermark.trim()) drawWatermark(c, cfg.watermark.trim(), theme);
+
+        c.restore();
+      }
+
       /* =========================================================================
          9. HIZLI OFFLINE TAM VİDEO RENDER & İNDİRME MOTORU (.MP4 & .WEBM)
          ========================================================================= */
@@ -111,617 +780,4 @@
 
         await audioEncoder.flush();
         audioEncoder.close();
-      }
-
-      async function generateFullVideoWebCodecs(format, width, height, fps, videoCodec, audioCodec) {
-        const useAudio = config.audioEnabled && !!audioCodec;
-        const isMp4 = format === "mp4";
-
-        const muxer = isMp4
-          ? new Mp4Muxer.Muxer({
-              target: new Mp4Muxer.ArrayBufferTarget(),
-              video: { codec: "avc", width, height },
-              audio: useAudio ? { codec: "aac", numberOfChannels: 2, sampleRate: 48000 } : undefined,
-              fastStart: "in-memory"
-            })
-          : new WebMMuxer.Muxer({
-              target: new WebMMuxer.ArrayBufferTarget(),
-              video: { codec: videoCodec.startsWith("vp09") ? "V_VP9" : "V_VP8", width, height },
-              audio: useAudio ? { codec: "A_OPUS", numberOfChannels: 2, sampleRate: 48000 } : undefined
-            });
-
-        const bitrate = width >= 1080 ? (fps >= 60 ? 11_000_000 : 8_000_000) : 5_000_000;
-        const videoEncoder = new VideoEncoder({
-          output: (chunk, meta) => muxer.addVideoChunk(chunk, meta),
-          error: (e) => console.error("VideoEncoder hatası:", e)
-        });
-
-        const encCfg = { codec: videoCodec, width, height, bitrate, framerate: fps };
-        if (isMp4) encCfg.avc = { format: "avc" };
-        videoEncoder.configure(encCfg);
-
-        const offCanvas = document.createElement("canvas");
-        offCanvas.width = width;
-        offCanvas.height = height;
-        const offCtx = offCanvas.getContext("2d", { alpha: false });
-
-        const renderCfg = { ...config };
-        const simState = createSimState(renderCfg);
-        const audioEvents = [];
-
-        const dt = 1 / fps;
-        const frameDurationUs = Math.round(1_000_000 / fps);
-        const maxFrames = fps * 240;
-        let frameIdx = 0;
-        const wallStart = performance.now();
-
-        const emitAudio = (ev) => {
-          if (!useAudio) return;
-          audioEvents.push({ ...ev, time: frameIdx * dt });
-        };
-
-        while (!renderCancelRequested && frameIdx < maxFrames) {
-          stepSimState(simState, dt, renderCfg, emitAudio);
-          renderSimState(offCtx, simState, renderCfg, width, height);
-
-          const frame = new VideoFrame(offCanvas, {
-            timestamp: frameIdx * frameDurationUs,
-            duration: frameDurationUs
-          });
-          videoEncoder.encode(frame, { keyFrame: frameIdx % (fps * 2) === 0 });
-          frame.close();
-          frameIdx++;
-
-          if (frameIdx % 3 === 0 || videoEncoder.encodeQueueSize > 6) {
-            previewCtx.drawImage(offCanvas, 0, 0, BASE_W, BASE_H);
-
-            const remaining = simState.badges.filter((b) => !b.eliminated).length;
-            const elimRatio = (simState.totalClubs - remaining) / Math.max(1, simState.totalClubs - 1);
-            const celebRatio = simState.winner ? Math.min(1, simState.winnerTime / 3.5) : 0;
-            const pct = Math.min(96, Math.round(elimRatio * 88 + celebRatio * 8));
-            const wallSec = Math.max(0.1, (performance.now() - wallStart) / 1000);
-            const speedX = (frameIdx * dt) / wallSec;
-
-            renderProgressBar.style.width = `${pct}%`;
-            renderPercentText.textContent = `${pct}%`;
-            renderDurationText.textContent = fmtTime(frameIdx * dt);
-            renderClubsText.textContent = `${remaining} / ${simState.totalClubs}`;
-            renderSpeedText.textContent = `${speedX.toFixed(1)}x`;
-
-            while (videoEncoder.encodeQueueSize > 8 && !renderCancelRequested) {
-              await new Promise((r) => setTimeout(r, 4));
-            }
-            await new Promise((r) => setTimeout(r, 0));
-          }
-
-          if (simState.winner && simState.winnerTime >= 3.5) break;
-        }
-
-        if (renderCancelRequested) {
-          try { videoEncoder.close(); } catch (_) {}
-          return null;
-        }
-
-        renderStageTitle.textContent = useAudio ? "Ses Efektleri Ekleniyor..." : "Video Paketleniyor...";
-        renderProgressBar.style.width = "97%";
-        renderPercentText.textContent = "97%";
-        await new Promise((r) => setTimeout(r, 10));
-
-        await videoEncoder.flush();
-        videoEncoder.close();
-
-        const totalSec = frameIdx * dt;
-        if (useAudio) {
-          try {
-            await synthesizeAndEncodeAudio(audioEvents, totalSec, audioCodec, muxer);
-          } catch (err) {
-            console.warn("Ses kodlama atlandı:", err);
-          }
-        }
-
-        if (renderCancelRequested) return null;
-
-        renderStageTitle.textContent = "Dosya Hazırlanıyor...";
-        renderProgressBar.style.width = "100%";
-        renderPercentText.textContent = "100%";
-        muxer.finalize();
-
-        const { buffer } = muxer.target;
-        return {
-          blob: new Blob([buffer], { type: isMp4 ? "video/mp4" : "video/webm" }),
-          ext: format,
-          winnerName: simState.winner ? simState.winner.club.name : "arena",
-          totalSec
-        };
-      }
-
-      async function generateFullVideoMediaRecorder(requestedFormat, width, height, fps) {
-        const candidates = requestedFormat === "mp4"
-          ? [
-              { mime: "video/mp4;codecs=avc1", ext: "mp4" },
-              { mime: "video/mp4", ext: "mp4" },
-              { mime: "video/webm;codecs=vp9,opus", ext: "webm" },
-              { mime: "video/webm", ext: "webm" }
-            ]
-          : [
-              { mime: "video/webm;codecs=vp9,opus", ext: "webm" },
-              { mime: "video/webm", ext: "webm" }
-            ];
-
-        let chosen = { mime: "", ext: "webm" };
-        for (const c of candidates) {
-          if (MediaRecorder.isTypeSupported(c.mime)) { chosen = c; break; }
-        }
-
-        const offCanvas = document.createElement("canvas");
-        offCanvas.width = width;
-        offCanvas.height = height;
-        const offCtx = offCanvas.getContext("2d", { alpha: false });
-
-        const stream = offCanvas.captureStream(fps);
-        const chunks = [];
-        const recorder = new MediaRecorder(stream, { mimeType: chosen.mime || undefined, videoBitsPerSecond: 7_500_000 });
-        const stopPromise = new Promise((resolve) => {
-          recorder.ondataavailable = (e) => { if (e.data && e.data.size > 0) chunks.push(e.data); };
-          recorder.onstop = () => resolve(new Blob(chunks, { type: chosen.mime || "video/webm" }));
-        });
-
-        const renderCfg = { ...config };
-        const simState = createSimState(renderCfg);
-        const dt = 1 / fps;
-        let elapsed = 0;
-
-        recorder.start(250);
-        while (!renderCancelRequested && elapsed < 240) {
-          stepSimState(simState, dt, renderCfg, () => {});
-          renderSimState(offCtx, simState, renderCfg, width, height);
-          previewCtx.drawImage(offCanvas, 0, 0, BASE_W, BASE_H);
-          elapsed += dt;
-
-          const remaining = simState.badges.filter((b) => !b.eliminated).length;
-          const pct = Math.min(98, Math.round(((simState.totalClubs - remaining) / Math.max(1, simState.totalClubs - 1)) * 92));
-          renderProgressBar.style.width = `${pct}%`;
-          renderPercentText.textContent = `${pct}%`;
-          renderDurationText.textContent = fmtTime(elapsed);
-          renderClubsText.textContent = `${remaining} / ${simState.totalClubs}`;
-          renderSpeedText.textContent = "1.0x";
-
-          if (simState.winner && simState.winnerTime >= 3.5) break;
-          await new Promise((r) => setTimeout(r, Math.round(1000 / fps)));
-        }
-
-        recorder.stop();
-        const blob = await stopPromise;
-        if (renderCancelRequested) return null;
-        return {
-          blob,
-          ext: chosen.ext,
-          winnerName: simState.winner ? simState.winner.club.name : "arena",
-          totalSec: elapsed
-        };
-      }
-
-      async function handleGenerateFullVideo() {
-        if (isRendering) return;
-        const activeCount = allClubs.filter((c) => c.enabled).length;
-        if (activeCount < 2) {
-          showToast("En az 2 aktif kulüp seçili olmalıdır.", "warn");
-          return;
-        }
-
-        previewRunning = false;
-        updatePreviewButtonsUI();
-
-        isRendering = true;
-        renderCancelRequested = false;
-        btnGenerateDownload.disabled = true;
-        generateBtnLabel.textContent = "Tam Video Oluşturuluyor...";
-
-        const { width, height, fps } = parseQuality(config.quality);
-        const format = config.format;
-
-        renderStageTitle.textContent = `Tam Video Oluşturuluyor (.${format.toUpperCase()})...`;
-        renderProgressBar.style.width = "0%";
-        renderPercentText.textContent = "0%";
-        renderDurationText.textContent = "00:00";
-        renderClubsText.textContent = `${activeCount} / ${activeCount}`;
-        renderSpeedText.textContent = "...";
-        renderOverlay.classList.remove("hidden");
-        renderOverlay.classList.add("flex");
-
-        try {
-          const bitrate = width >= 1080 ? (fps >= 60 ? 11_000_000 : 8_000_000) : 5_000_000;
-          const videoCodec = await findSupportedVideoCodec(format, width, height, fps, bitrate);
-          const audioCodec = await findSupportedAudioCodec(format);
-          const muxerOk = format === "mp4" ? typeof Mp4Muxer !== "undefined" : typeof WebMMuxer !== "undefined";
-
-          let result = null;
-          if (videoCodec && muxerOk) {
-            result = await generateFullVideoWebCodecs(format, width, height, fps, videoCodec, audioCodec);
-          } else if (typeof MediaRecorder !== "undefined") {
-            showToast("Tarayıcı yedek video motoru kullanılıyor...", "info");
-            result = await generateFullVideoMediaRecorder(format, width, height, fps);
-          } else {
-            throw new Error("Tarayıcınız video dışa aktarmayı desteklemiyor.");
-          }
-
-          if (result && !renderCancelRequested) {
-            triggerBlobDownload(result.blob, result.ext, result.winnerName, result.totalSec);
-          } else if (renderCancelRequested) {
-            showToast("Video oluşturma iptal edildi.", "warn");
-          }
-        } catch (err) {
-          console.error(err);
-          showToast("Video oluşturulurken hata oluştu: " + (err.message || err), "error");
-        } finally {
-          isRendering = false;
-          renderCancelRequested = false;
-          btnGenerateDownload.disabled = false;
-          generateBtnLabel.textContent = "Tam Videoyu Oluştur ve İndir";
-          renderOverlay.classList.add("hidden");
-          renderOverlay.classList.remove("flex");
-          if (previewState) renderSimState(previewCtx, previewState, config, BASE_W, BASE_H);
-        }
-      }
-
-      /* =========================================================================
-         10. MOD GEÇİŞİ, URL PAYLAŞIM LİNKİ & ÖNİZLEME DÖNGÜSÜ
-         ========================================================================= */
-      const MODE_META = {
-        ring:  { title: "🌀 Klasik Halka — Viral Mod Ayarları",  badge: "Dönen Boşluk Fiziği",    panel: panelModeRing },
-        bomb:  { title: "💣 Saatli Bomba — Hot Potato Ayarları", badge: "Dokun & Devret",          panel: panelModeBomb },
-        blade: { title: "⚔️ Kılıç Savaşı — Düello Ayarları",     badge: "3 Can • Enerji Kılıcı",   panel: panelModeBlade },
-        laser: { title: "⚡ Ölüm Lazeri — Hayatta Kalma",        badge: "2 Can • Dönen Lazer",     panel: panelModeLaser }
-      };
-
-      function switchMode(newMode) {
-        if (!MODE_META[newMode]) return;
-        config.mode = newMode;
-
-        modeTabs.forEach((btn) => {
-          const active = btn.dataset.mode === newMode;
-          btn.classList.toggle("mode-tab-active", active);
-          if (!active) btn.classList.add("text-slate-300");
-          else btn.classList.remove("text-slate-300");
-        });
-
-        [panelModeRing, panelModeBomb, panelModeBlade, panelModeLaser].forEach((p) => p.classList.add("hidden"));
-        MODE_META[newMode].panel.classList.remove("hidden");
-        modePanelTitle.textContent = MODE_META[newMode].title;
-        modePanelBadge.textContent = MODE_META[newMode].badge;
-
-        if (!isRendering) {
-          previewRunning = false;
-          updatePreviewButtonsUI();
-          resetPreview();
-        }
-      }
-
-      function buildShareableURL() {
-        const params = new URLSearchParams();
-        params.set("m", config.mode);
-        params.set("t", config.theme);
-        params.set("pr", config.preset || "ucl36");
-        params.set("w", config.selectedWinnerKey);
-        params.set("sp", config.simSpeed.toFixed(2));
-        params.set("sl", config.slowMoFinale ? "1" : "0");
-        params.set("sub", config.subTitle);
-        params.set("main", config.mainTitle);
-        if (config.watermark) params.set("wm", config.watermark);
-        params.set("hk", config.viralHook);
-        params.set("hkon", config.showViralHook ? "1" : "0");
-        if (config.mode === "ring") {
-          params.set("gap", String(config.gapDegrees));
-          params.set("dg", config.doubleGap ? "1" : "0");
-          params.set("sr", config.shrinkingRing ? "1" : "0");
-        }
-        const base = window.location.origin + window.location.pathname;
-        return `${base}?${params.toString()}`;
-      }
-
-      function applyURLParamsOnLoad() {
-        try {
-          const p = new URLSearchParams(window.location.search);
-          if (!p.toString()) return;
-          if (p.get("pr")) applyLeaguePreset(p.get("pr"), true);
-          if (p.get("m") && MODE_META[p.get("m")]) config.mode = p.get("m");
-          if (p.get("t") && THEMES[p.get("t")]) {
-            config.theme = p.get("t");
-            selectTheme.value = config.theme;
-          }
-          if (p.get("w")) config.selectedWinnerKey = p.get("w");
-          if (p.get("sp")) {
-            config.simSpeed = Math.max(0.6, Math.min(2.0, parseFloat(p.get("sp")) || 1.0));
-            sliderSimSpeed.value = config.simSpeed;
-            valSimSpeed.textContent = `${config.simSpeed.toFixed(2)}x`;
-          }
-          if (p.get("sl")) {
-            config.slowMoFinale = p.get("sl") === "1";
-            toggleSlowMo.checked = config.slowMoFinale;
-          }
-          if (p.get("sub")) { config.subTitle = p.get("sub"); inputSubTitle.value = config.subTitle; }
-          if (p.get("main")) { config.mainTitle = p.get("main"); inputMainTitle.value = config.mainTitle; }
-          if (p.get("wm")) { config.watermark = p.get("wm"); inputWatermark.value = config.watermark; }
-          if (p.get("hk")) { config.viralHook = p.get("hk"); inputViralHook.value = config.viralHook; }
-          if (p.get("hkon")) {
-            config.showViralHook = p.get("hkon") === "1";
-            toggleViralHook.checked = config.showViralHook;
-          }
-          if (p.get("gap")) {
-            config.gapDegrees = Math.max(16, Math.min(60, parseInt(p.get("gap"), 10) || 24));
-            sliderGap.value = config.gapDegrees;
-            valGap.textContent = `${config.gapDegrees}°`;
-          }
-          if (p.get("dg")) { config.doubleGap = p.get("dg") === "1"; modDoubleGap.checked = config.doubleGap; }
-          if (p.get("sr")) { config.shrinkingRing = p.get("sr") === "1"; modShrinkingRing.checked = config.shrinkingRing; }
-        } catch (_) {}
-      }
-
-      function resetPreview() {
-        previewState = createSimState(config);
-        updatePreviewStatsUI();
-        renderSimState(previewCtx, previewState, config, BASE_W, BASE_H);
-      }
-
-      function updatePreviewButtonsUI() {
-        previewIcon.textContent = previewRunning ? "⏸" : "▶";
-        previewLabel.textContent = previewRunning ? "Önizlemeyi Duraklat" : "Önizlemeyi Başlat";
-      }
-
-      function updatePreviewStatsUI() {
-        if (!previewState) return;
-        const rem = previewState.badges.filter((b) => !b.eliminated).length;
-        previewElapsedEl.textContent = fmtTime(previewState.simTime);
-        previewRemainingEl.textContent = `${rem} / ${previewState.totalClubs}`;
-      }
-
-      let lastTs = 0;
-      let physAccum = 0;
-      const FIXED_DT = 1 / 60;
-
-      function previewLoop(ts) {
-        if (!lastTs) lastTs = ts;
-        const dt = Math.min((ts - lastTs) / 1000, 0.05);
-        lastTs = ts;
-
-        if (!isRendering) {
-          if (previewRunning && previewState) {
-            physAccum += dt;
-            while (physAccum >= FIXED_DT) {
-              stepSimState(previewState, FIXED_DT, config, playLiveSound);
-              physAccum -= FIXED_DT;
-            }
-            updatePreviewStatsUI();
-          }
-          if (previewState) renderSimState(previewCtx, previewState, config, BASE_W, BASE_H);
-        }
-        requestAnimationFrame(previewLoop);
-      }
-
-      /* =========================================================================
-         11. KULÜP YÖNETİMİ, LİG PAKETLERİ & CANLI İNTERNET LOGO ARAMA
-         ========================================================================= */
-      function applyLeaguePreset(presetKey, silent = false) {
-        config.preset = presetKey;
-        if (presetKey === "ucl36") {
-          allClubs.forEach((c) => (c.enabled = !!c.ucl));
-        } else if (presetKey === "superlig") {
-          allClubs.forEach((c) => (c.enabled = c.cat === "superlig"));
-          config.subTitle = "TÜRKİYE SÜPER LİG";
-          inputSubTitle.value = config.subTitle;
-        } else if (presetKey === "premier") {
-          allClubs.forEach((c) => (c.enabled = c.cat === "premier"));
-          config.subTitle = "PREMIER LEAGUE";
-          inputSubTitle.value = config.subTitle;
-        } else if (presetKey === "laliga") {
-          allClubs.forEach((c) => (c.enabled = c.cat === "laliga"));
-          config.subTitle = "LA LIGA EA SPORTS";
-          inputSubTitle.value = config.subTitle;
-        } else if (presetKey === "seriea") {
-          allClubs.forEach((c) => (c.enabled = c.cat === "seriea"));
-          config.subTitle = "SERIE A ENILIVE";
-          inputSubTitle.value = config.subTitle;
-        } else if (presetKey === "bundesliga") {
-          allClubs.forEach((c) => (c.enabled = c.cat === "bundesliga"));
-          config.subTitle = "BUNDESLIGA";
-          inputSubTitle.value = config.subTitle;
-        } else if (presetKey === "worldcup") {
-          allClubs.forEach((c) => (c.enabled = c.cat === "national"));
-          config.subTitle = "WORLD CUP SURVIVAL";
-          inputSubTitle.value = config.subTitle;
-        } else if (presetKey === "super50") {
-          const superSet = new Set([
-            "galatasaray", "fenerbahce", "besiktas", "trabzonspor", "basaksehir",
-            "man_city", "arsenal", "liverpool", "chelsea", "man_united", "tottenham", "newcastle", "aston_villa",
-            "real_madrid", "barcelona", "atletico", "bilbao", "sociedad", "villarreal", "betis", "sevilla",
-            "inter", "ac_milan", "juventus", "napoli", "roma", "lazio", "atalanta", "fiorentina",
-            "bayern", "dortmund", "leverkusen", "leipzig", "stuttgart", "frankfurt",
-            "psg", "marseille", "monaco", "lyon", "lille", "ajax", "psv", "feyenoord",
-            "benfica", "porto", "sporting", "celtic", "inter_miami", "al_nassr", "al_hilal"
-          ]);
-          allClubs.forEach((c) => (c.enabled = superSet.has(c.key)));
-          config.subTitle = "50 WORLD GIANTS ARENA";
-          inputSubTitle.value = config.subTitle;
-        } else if (presetKey === "mega") {
-          allClubs.forEach((c) => (c.enabled = true));
-          config.subTitle = `MEGA CHAOS • ${allClubs.length} TEAMS`;
-          inputSubTitle.value = config.subTitle;
-        }
-
-        preloadClubLogos(true);
-        if (!silent) {
-          renderClubModalGrid();
-          showToast(`Paket uygulandı: ${allClubs.filter((c) => c.enabled).length} takım seçildi!`, "success");
-        }
-      }
-
-      function getFilteredModalClubs() {
-        const q = localSearchTerm.trim().toLowerCase();
-        return allClubs.filter((c) => {
-          const catOk = activeModalCategory === "all"
-            ? true
-            : activeModalCategory === "custom"
-              ? !!c.custom
-              : c.cat === activeModalCategory;
-          if (!catOk) return false;
-          if (!q) return true;
-          return c.name.toLowerCase().includes(q) || c.short.toLowerCase().includes(q);
-        });
-      }
-
-      function rebuildWinnerDropdown() {
-        const activeClubs = allClubs.filter((c) => c.enabled);
-        navClubsSub.textContent = `${activeClubs.length} / ${allClubs.length} Aktif`;
-        const prev = config.selectedWinnerKey;
-        selectWinner.innerHTML = `<option value="random">🎲 Rastgele (Doğal Fizik)</option>`;
-        activeClubs.forEach((club) => {
-          const opt = document.createElement("option");
-          opt.value = club.key;
-          opt.textContent = `🏆 ${club.name}`;
-          selectWinner.appendChild(opt);
-        });
-        if (prev !== "random" && activeClubs.some((c) => c.key === prev)) {
-          selectWinner.value = prev;
-        } else {
-          config.selectedWinnerKey = "random";
-          selectWinner.value = "random";
-        }
-      }
-
-      function renderClubModalGrid() {
-        const selCount = allClubs.filter((c) => c.enabled).length;
-        modalSelectedCount.textContent = `${selCount} / ${allClubs.length} Takım Seçili`;
-        clubGrid.innerHTML = "";
-
-        const visible = getFilteredModalClubs();
-        if (visible.length === 0) {
-          clubGrid.innerHTML = `<div class="col-span-full text-center py-8 text-xs text-slate-400">Eşleşen takım bulunamadı. Yukarıdaki <strong>İnternette Ara</strong> çubuğundan dilediğiniz kulübü anında ekleyebilirsiniz!</div>`;
-          return;
-        }
-
-        visible.forEach((club) => {
-          const btn = document.createElement("button");
-          btn.type = "button";
-          btn.className = `flex items-center gap-2 px-2.5 py-2 rounded-xl border text-left transition cursor-pointer ${
-            club.enabled
-              ? "bg-sky-950/55 border-sky-500/65 text-white"
-              : "bg-slate-950/55 border-slate-800 text-slate-400 opacity-65 hover:opacity-100"
-          }`;
-
-          const thumbHtml = club.logoUrl
-            ? `<img src="${club.logoUrl}" alt="" loading="lazy" class="w-6 h-6 object-contain shrink-0 ${club.isFlag ? "rounded-full" : ""}" onerror="this.style.display='none'" />`
-            : `<span class="w-5 h-5 rounded-full shrink-0" style="background:${club.c1};border:2px solid ${club.c2}"></span>`;
-
-          btn.innerHTML = `
-            ${thumbHtml}
-            <span class="text-[11px] font-bold truncate flex-1">${club.name}</span>
-            <span class="text-xs font-black text-sky-400">${club.enabled ? "✓" : ""}</span>
-          `;
-          btn.addEventListener("click", () => {
-            if (club.enabled && allClubs.filter((c) => c.enabled).length <= 2) {
-              showToast("En az 2 takım seçili olmalıdır.", "warn");
-              return;
-            }
-            club.enabled = !club.enabled;
-            if (club.enabled) loadClubLogo(club);
-            renderClubModalGrid();
-          });
-          clubGrid.appendChild(btn);
-        });
-      }
-
-      async function searchOnlineTeams() {
-        const q = onlineTeamQuery.value.trim();
-        if (q.length < 2) {
-          showToast("Aramak için en az 2 harf yazın (ör. Vanspor, Sakaryaspor).", "warn");
-          return;
-        }
-
-        btnOnlineSearch.disabled = true;
-        onlineSearchLabel.textContent = "Aranıyor...";
-        onlineSearchResults.classList.remove("hidden");
-        onlineSearchResults.innerHTML = `<div class="col-span-full text-center py-3 text-xs text-sky-300">🌐 "${q}" için gerçek kulüp logoları aranıyor...</div>`;
-
-        try {
-          const resp = await fetch(`https://www.thesportsdb.com/api/v1/json/123/searchteams.php?t=${encodeURIComponent(q)}`);
-          if (!resp.ok) throw new Error("API yanıt vermedi");
-          const data = await resp.json();
-          const teams = (data.teams || []).filter((t) =>
-            !t.strSport || t.strSport.toLowerCase().includes("soccer") || t.strSport.toLowerCase().includes("football")
-          );
-
-          if (teams.length === 0) {
-            onlineSearchResults.innerHTML = `<div class="col-span-full text-center py-3 text-xs text-amber-300">"${q}" için futbol kulübü bulunamadı. İngilizce/tam adını deneyebilir veya alttan cihazınızdan PNG logo ekleyebilirsiniz.</div>`;
-            return;
-          }
-
-          onlineSearchResults.innerHTML = "";
-          teams.slice(0, 12).forEach((t) => {
-            const badgeUrl = t.strBadge || t.strTeamBadge || "";
-            const teamName = (t.strTeam || q).toUpperCase().slice(0, 22);
-            const league = t.strLeague || t.strCountry || "Futbol Kulübü";
-            const shortCode = (t.strTeamShort || teamName.replace(/[^A-Z]/g, "").slice(0, 3) || "CLB").toUpperCase();
-
-            const card = document.createElement("div");
-            card.className = "flex items-center gap-2.5 p-2 rounded-xl bg-slate-950/90 border border-indigo-500/35";
-            card.innerHTML = `
-              ${badgeUrl ? `<img src="${badgeUrl}" alt="" class="w-9 h-9 object-contain shrink-0 rounded-lg bg-slate-900/70 p-0.5" onerror="this.style.display='none'" />` : `<div class="w-9 h-9 rounded-lg bg-indigo-900/60 flex items-center justify-center text-xs font-black text-white shrink-0">${shortCode}</div>`}
-              <div class="min-w-0 flex-1">
-                <div class="text-xs font-extrabold text-white truncate">${teamName}</div>
-                <div class="text-[10px] text-slate-400 truncate">${league}</div>
-              </div>
-              <button type="button" class="px-2.5 py-1.5 rounded-lg text-[11px] font-black bg-emerald-600 hover:bg-emerald-500 text-white cursor-pointer shrink-0">+ Ekle</button>
-            `;
-
-            const addBtn = card.querySelector("button");
-            addBtn.addEventListener("click", () => {
-              const existing = allClubs.find((c) => c.name === teamName);
-              if (existing) {
-                existing.enabled = true;
-                if (badgeUrl && !existing.realLoaded) {
-                  existing.logoUrl = badgeUrl;
-                  existing.loadingStarted = false;
-                  loadClubLogo(existing);
-                }
-                renderClubModalGrid();
-                showToast(`${teamName} zaten listedeydi, aktif edildi!`, "info");
-                return;
-              }
-
-              const newClub = {
-                key: "online_" + (t.idTeam || Date.now()) + "_" + Math.floor(Math.random() * 999),
-                id: null,
-                cat: "custom",
-                name: teamName,
-                short: shortCode,
-                c1: t.strColour1 && t.strColour1.startsWith("#") ? t.strColour1 : "#38bdf8",
-                c2: t.strColour2 && t.strColour2.startsWith("#") ? t.strColour2 : "#1e3a8a",
-                enabled: true,
-                custom: true,
-                isFlag: false,
-                logoUrl: badgeUrl,
-                sprite: null,
-                realLoaded: false,
-                loadingStarted: false
-              };
-              newClub.sprite = createFallbackCrest(newClub);
-              allClubs.unshift(newClub);
-              loadClubLogo(newClub);
-              renderClubModalGrid();
-              rebuildWinnerDropdown();
-              addBtn.textContent = "✓ Eklendi";
-              addBtn.disabled = true;
-              addBtn.className = "px-2.5 py-1.5 rounded-lg text-[11px] font-black bg-slate-700 text-emerald-300 shrink-0";
-              showToast(`${teamName} gerçek logosuyla arenaya eklendi!`, "success");
-            });
-
-            onlineSearchResults.appendChild(card);
-          });
-        } catch (err) {
-          console.error(err);
-          onlineSearchResults.innerHTML = `<div class="col-span-full text-center py-3 text-xs text-rose-300">İnternet aramasına ulaşılamadı. Bağlantınızı kontrol edin veya alttan manuel logo ekleyin.</div>`;
-        } finally {
-          btnOnlineSearch.disabled = false;
-          onlineSearchLabel.textContent = "İnternette Ara";
-        }
       }
