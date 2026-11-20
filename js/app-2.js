@@ -1,8 +1,99 @@
 "use strict";
+      const btnCancelRender = document.getElementById("btnCancelRender");
+
+      // Preview controls
+      const previewElapsedEl = document.getElementById("previewElapsed");
+      const previewRemainingEl = document.getElementById("previewRemaining");
+      const btnPreviewToggle = document.getElementById("btnPreviewToggle");
+      const previewIcon = document.getElementById("previewIcon");
+      const previewLabel = document.getElementById("previewLabel");
+      const btnPreviewReset = document.getElementById("btnPreviewReset");
+
+      // Club modal
+      const clubModal = document.getElementById("clubModal");
+      const btnCloseClubModal = document.getElementById("btnCloseClubModal");
+      const clubGrid = document.getElementById("clubGrid");
+      const modalSelectedCount = document.getElementById("modalSelectedCount");
+      const presetBtns = document.querySelectorAll(".preset-btn");
+      const categoryFilterBar = document.getElementById("categoryFilterBar");
+      const leagueSelect = document.getElementById("leagueSelect");
+      const btnLeagueOnly = document.getElementById("btnLeagueOnly");
+      const btnLeagueAdd = document.getElementById("btnLeagueAdd");
+      const btnLoadAllLeagues = document.getElementById("btnLoadAllLeagues");
+      const leagueStatus = document.getElementById("leagueStatus");
+      const btnDeselectVisible = document.getElementById("btnDeselectVisible");
+      const btnOnlySelected = document.getElementById("btnOnlySelected");
+      const localTeamSearch = document.getElementById("localTeamSearch");
+      const btnSelectAllVisible = document.getElementById("btnSelectAllVisible");
+      const btnClearAllClubs = document.getElementById("btnClearAllClubs");
+      const btnRandom36 = document.getElementById("btnRandom36");
+      const onlineTeamQuery = document.getElementById("onlineTeamQuery");
+      const btnOnlineSearch = document.getElementById("btnOnlineSearch");
+      const onlineSearchLabel = document.getElementById("onlineSearchLabel");
+      const onlineSearchResults = document.getElementById("onlineSearchResults");
+      const manualTeamName = document.getElementById("manualTeamName");
+      const manualTeamUrl = document.getElementById("manualTeamUrl");
+      const btnAddManualTeam = document.getElementById("btnAddManualTeam");
+      const btnApplyClubs = document.getElementById("btnApplyClubs");
+      const modalCustomLogoInput = document.getElementById("modalCustomLogoInput");
+
+      // Mode inputs
+      const sliderGap = document.getElementById("sliderGap");
+      const valGap = document.getElementById("valGap");
+      const sliderRingSpeed = document.getElementById("sliderRingSpeed");
+      const valRingSpeed = document.getElementById("valRingSpeed");
+      const modDoubleGap = document.getElementById("modDoubleGap");
+      const modShrinkingRing = document.getElementById("modShrinkingRing");
+      const modSpeedEscalation = document.getElementById("modSpeedEscalation");
+      const modGrowSurvivor = document.getElementById("modGrowSurvivor");
+
+      const sliderBombTimer = document.getElementById("sliderBombTimer");
+      const valBombTimer = document.getElementById("valBombTimer");
+      const sliderBombChaos = document.getElementById("sliderBombChaos");
+      const valBombChaos = document.getElementById("valBombChaos");
+
+      const sliderBladeSpeed = document.getElementById("sliderBladeSpeed");
+      const valBladeSpeed = document.getElementById("valBladeSpeed");
+      const sliderBladeLen = document.getElementById("sliderBladeLen");
+      const valBladeLen = document.getElementById("valBladeLen");
+
+      const sliderLaserSpeed = document.getElementById("sliderLaserSpeed");
+      const valLaserSpeed = document.getElementById("valLaserSpeed");
+      const selectLaserCount = document.getElementById("selectLaserCount");
+
+      // Shared physics & viral inputs
+      const sliderSimSpeed = document.getElementById("sliderSimSpeed");
+      const valSimSpeed = document.getElementById("valSimSpeed");
+      const sliderGravity = document.getElementById("sliderGravity");
+      const valGravity = document.getElementById("valGravity");
+      const sliderLogoSize = document.getElementById("sliderLogoSize");
+      const sliderSpin = document.getElementById("sliderSpin");
+      const valSpin = document.getElementById("valSpin");
+      const toggleLeagueLogo = document.getElementById("toggleLeagueLogo");
+      const valLogoSize = document.getElementById("valLogoSize");
+
+      const selectWinner = document.getElementById("selectWinner");
+      const selectTheme = document.getElementById("selectTheme");
+      const customTrophyInput = document.getElementById("customTrophyInput");
+      const btnResetTrophy = document.getElementById("btnResetTrophy");
+      const trophyThemeLabel = document.getElementById("trophyThemeLabel");
+      const inputSubTitle = document.getElementById("inputSubTitle");
+      const inputMainTitle = document.getElementById("inputMainTitle");
+      const inputWatermark = document.getElementById("inputWatermark");
+      const inputViralHook = document.getElementById("inputViralHook");
+      const toggleViralHook = document.getElementById("toggleViralHook");
+      const toggleSlowMo = document.getElementById("toggleSlowMo");
+      const toggleAudio = document.getElementById("toggleAudio");
+
+      // Export controls
+      const selectFormat = document.getElementById("selectFormat");
       const selectQuality = document.getElementById("selectQuality");
       const btnGenerateDownload = document.getElementById("btnGenerateDownload");
       const generateBtnLabel = document.getElementById("generateBtnLabel");
       const btnRedownload = document.getElementById("btnRedownload");
+      const mbPlay = document.getElementById("mbPlay");
+      const mbReset = document.getElementById("mbReset");
+      const mbGenerate = document.getElementById("mbGenerate");
       const redownloadLabel = document.getElementById("redownloadLabel");
 
       const config = {
@@ -12,7 +103,7 @@
         simSpeed: 1.0,
         gravityScale: 1.0,
         bounciness: 0.88,
-        logoRadius: 37,
+        logoRadius: 44,
 
         // Ring mode
         gapDegrees: 24,
@@ -37,7 +128,10 @@
         // Viral & text
         subTitle: "UEFA CHAMPIONS LEAGUE",
         mainTitle: "WHO SURVIVES?",
-        watermark: "",
+        watermark: "taktiksports",
+        showLeagueLogo: true,
+        leagueSlug: null,
+        spinSpeed: 0.3,
         viralHook: "SONA KALAN SENİN TAKIMIN MI? YORUMA YAZ! 👇",
         showViralHook: true,
         slowMoFinale: true,
@@ -49,9 +143,7 @@
         quality: "1080x1920@30"
       };
 
-      let silverTrophyCanvas = null;
-      let goldTrophyCanvas = null;
-      let customTrophyImg = null;
+            const customTrophies = {}; // tema anahtarı -> Image (lige özel yüklenen gerçek kupa)
 
       let previewState = null;
       let previewRunning = false;
@@ -288,512 +380,327 @@
       }
 
       /* =========================================================================
-         5. GÜMÜŞ & ALTIN 3D METALİK ŞAMPİYONLAR KUPASI
+         5. LİGE ÖZEL GERÇEKÇİ KUPA ÇİZİMLERİ (özgün tasarımlar, metal shading)
          ========================================================================= */
-      function buildTrophyCanvas(variant = "silver") {
-        const W = 560;
-        const H = 640;
-        const off = document.createElement("canvas");
-        off.width = W;
-        off.height = H;
-        const c = off.getContext("2d");
-        const isGold = variant === "gold";
+      const METALS = {
+        silver:   ["#3b4452", "#9aa5b4", "#f1f5f9", "#7b8696", "#dfe5ec", "#ffffff", "#8c97a6", "#2c3440"],
+        platinum: ["#33404a", "#a7b6c2", "#f8fbff", "#6f8190", "#e6eef5", "#ffffff", "#93a4b3", "#26313a"],
+        gold:     ["#4a2a05", "#b7791f", "#fde68a", "#92580f", "#f6c453", "#fff7d6", "#a8690f", "#3a2104"],
+        champagne:["#4b3420", "#b08a5a", "#f6e7cf", "#8a6a45", "#e9d3b0", "#fffaf0", "#9c7b52", "#382618"]
+      };
 
-        c.save();
-        c.translate(W / 2, 325);
+      function metalGradient(c, x0, x1, kind) {
+        const g = c.createLinearGradient(x0, 0, x1, 0);
+        const st = METALS[kind] || METALS.silver;
+        const pos = [0, 0.12, 0.27, 0.42, 0.58, 0.7, 0.86, 1];
+        st.forEach((col, i) => g.addColorStop(pos[i], col));
+        return g;
+      }
 
-        const bodyMetal = c.createLinearGradient(-138, 0, 138, 0);
-        if (isGold) {
-          bodyMetal.addColorStop(0.0, "#713f12");
-          bodyMetal.addColorStop(0.16, "#eab308");
-          bodyMetal.addColorStop(0.30, "#fef9c3");
-          bodyMetal.addColorStop(0.46, "#a16207");
-          bodyMetal.addColorStop(0.64, "#facc15");
-          bodyMetal.addColorStop(0.80, "#fffbeb");
-          bodyMetal.addColorStop(0.92, "#ca8a04");
-          bodyMetal.addColorStop(1.0, "#422006");
-        } else {
-          bodyMetal.addColorStop(0.0, "#475569");
-          bodyMetal.addColorStop(0.14, "#cbd5e1");
-          bodyMetal.addColorStop(0.28, "#f8fafc");
-          bodyMetal.addColorStop(0.45, "#64748b");
-          bodyMetal.addColorStop(0.62, "#e2e8f0");
-          bodyMetal.addColorStop(0.78, "#ffffff");
-          bodyMetal.addColorStop(0.90, "#94a3b8");
-          bodyMetal.addColorStop(1.0, "#334155");
-        }
-
-        const handleMetal = c.createLinearGradient(-230, -170, 230, 80);
-        if (isGold) {
-          handleMetal.addColorStop(0.0, "#ca8a04");
-          handleMetal.addColorStop(0.25, "#fef08a");
-          handleMetal.addColorStop(0.5, "#a16207");
-          handleMetal.addColorStop(0.75, "#fde047");
-          handleMetal.addColorStop(1.0, "#713f12");
-        } else {
-          handleMetal.addColorStop(0.0, "#94a3b8");
-          handleMetal.addColorStop(0.25, "#f8fafc");
-          handleMetal.addColorStop(0.5, "#64748b");
-          handleMetal.addColorStop(0.75, "#f1f5f9");
-          handleMetal.addColorStop(1.0, "#475569");
-        }
-
-        function drawEar(sign) {
-          c.save();
-          c.scale(sign, 1);
-          c.beginPath();
-          c.moveTo(108, -162);
-          c.bezierCurveTo(235, -242, 268, -68, 178, 36);
-          c.bezierCurveTo(148, 70, 112, 82, 74, 86);
-          c.lineTo(66, 56);
-          c.bezierCurveTo(106, 52, 134, 34, 154, 4);
-          c.bezierCurveTo(212, -74, 196, -182, 108, -126);
-          c.closePath();
-          c.fillStyle = handleMetal;
-          c.fill();
-          c.strokeStyle = isGold ? "rgba(254,249,195,0.75)" : "rgba(255,255,255,0.75)";
-          c.lineWidth = 4;
-          c.stroke();
-          c.restore();
-        }
-        drawEar(-1);
-        drawEar(1);
-
+      // Simetrik döner gövde: profile = [[x,y], ...] sağ yarım, yukarıdan aşağı
+      function latheBody(c, profile, kind, opts = {}) {
+        const maxX = Math.max(...profile.map((p) => p[0]));
+        const top = profile[0][1];
+        const bottom = profile[profile.length - 1][1];
         c.beginPath();
-        c.moveTo(-136, -210);
-        c.quadraticCurveTo(0, -188, 136, -210);
-        c.bezierCurveTo(132, -88, 112, 26, 68, 110);
-        c.quadraticCurveTo(0, 132, -68, 110);
-        c.bezierCurveTo(-112, 26, -132, -88, -136, -210);
+        c.moveTo(-profile[0][0], profile[0][1]);
+        for (let i = 1; i < profile.length; i++) {
+          const [x, y] = profile[i];
+          const [px, py] = profile[i - 1];
+          c.quadraticCurveTo(-(px + x) / 2 - (opts.bulge || 0), (py + y) / 2, -x, y);
+        }
+        for (let i = profile.length - 1; i >= 0; i--) {
+          const [x, y] = profile[i];
+          if (i === profile.length - 1) { c.lineTo(x, y); continue; }
+          const [nx, ny] = profile[i + 1];
+          c.quadraticCurveTo((nx + x) / 2 + (opts.bulge || 0), (ny + y) / 2, x, y);
+        }
         c.closePath();
-        c.fillStyle = bodyMetal;
+        c.fillStyle = metalGradient(c, -maxX, maxX, kind);
         c.fill();
-        c.strokeStyle = isGold ? "rgba(254,240,138,0.72)" : "rgba(241,245,249,0.72)";
-        c.lineWidth = 3;
-        c.stroke();
-
+        // Kenar karartma (hacim)
         c.save();
         c.clip();
-        const s1 = c.createLinearGradient(-85, 0, -35, 0);
-        s1.addColorStop(0, "rgba(255,255,255,0)");
-        s1.addColorStop(0.5, "rgba(255,255,255,0.62)");
-        s1.addColorStop(1, "rgba(255,255,255,0)");
-        c.fillStyle = s1;
-        c.fillRect(-95, -220, 65, 360);
+        const edge = c.createLinearGradient(-maxX, 0, maxX, 0);
+        edge.addColorStop(0, "rgba(0,0,0,0.45)");
+        edge.addColorStop(0.18, "rgba(0,0,0,0)");
+        edge.addColorStop(0.82, "rgba(0,0,0,0)");
+        edge.addColorStop(1, "rgba(0,0,0,0.5)");
+        c.fillStyle = edge;
+        c.fillRect(-maxX - 4, top - 4, maxX * 2 + 8, bottom - top + 8);
+        // Keskin dikey yansıma şeritleri
+        [[-0.42, 0.10, 0.55], [0.2, 0.05, 0.35]].forEach(([fx, fw, a]) => {
+          const sx = fx * maxX;
+          const sg = c.createLinearGradient(sx - fw * maxX, 0, sx + fw * maxX, 0);
+          sg.addColorStop(0, "rgba(255,255,255,0)");
+          sg.addColorStop(0.5, `rgba(255,255,255,${a})`);
+          sg.addColorStop(1, "rgba(255,255,255,0)");
+          c.fillStyle = sg;
+          c.fillRect(sx - fw * maxX, top, fw * maxX * 2, bottom - top);
+        });
+        // Üstten gelen stadyum ışığı
+        const vg = c.createLinearGradient(0, top, 0, bottom);
+        vg.addColorStop(0, "rgba(255,255,255,0.18)");
+        vg.addColorStop(0.35, "rgba(255,255,255,0)");
+        vg.addColorStop(1, "rgba(0,0,0,0.28)");
+        c.fillStyle = vg;
+        c.fillRect(-maxX - 4, top - 4, maxX * 2 + 8, bottom - top + 8);
         c.restore();
-
-        c.beginPath();
-        c.ellipse(0, -210, 136, 22, 0, 0, Math.PI * 2);
-        c.fillStyle = bodyMetal;
-        c.fill();
-        c.lineWidth = 4;
-        c.strokeStyle = isGold ? "#fef9c3" : "#f8fafc";
+        c.lineWidth = 1.6;
+        c.strokeStyle = "rgba(255,255,255,0.35)";
         c.stroke();
+      }
 
+      function rimEllipse(c, y, rx, ry, kind, inner = true) {
         c.beginPath();
-        c.ellipse(0, 114, 64, 15, 0, 0, Math.PI * 2);
-        c.fillStyle = bodyMetal;
+        c.ellipse(0, y, rx, ry, 0, 0, Math.PI * 2);
+        c.fillStyle = metalGradient(c, -rx, rx, kind);
         c.fill();
-
+        if (inner) {
+          c.beginPath();
+          c.ellipse(0, y + 1, rx * 0.9, ry * 0.68, 0, 0, Math.PI * 2);
+          const ig = c.createLinearGradient(0, y - ry, 0, y + ry);
+          ig.addColorStop(0, "rgba(10,14,22,0.92)");
+          ig.addColorStop(1, "rgba(70,80,96,0.75)");
+          c.fillStyle = ig;
+          c.fill();
+        }
         c.beginPath();
-        c.moveTo(-54, 118);
-        c.quadraticCurveTo(-36, 158, -76, 190);
-        c.lineTo(76, 190);
-        c.quadraticCurveTo(36, 158, 54, 118);
+        c.ellipse(0, y, rx, ry, 0, 0, Math.PI * 2);
+        c.lineWidth = 2.2;
+        c.strokeStyle = "rgba(255,255,255,0.7)";
+        c.stroke();
+      }
+
+      function handle(c, sign, kind, pts, width) {
+        c.save();
+        c.scale(sign, 1);
+        c.beginPath();
+        c.moveTo(pts[0][0], pts[0][1]);
+        c.bezierCurveTo(pts[1][0], pts[1][1], pts[2][0], pts[2][1], pts[3][0], pts[3][1]);
+        c.lineCap = "round";
+        c.lineWidth = width + 5;
+        c.strokeStyle = "rgba(0,0,0,0.45)";
+        c.stroke();
+        c.lineWidth = width;
+        c.strokeStyle = metalGradient(c, pts[0][0] - 40, pts[2][0] + 40, kind);
+        c.stroke();
+        c.lineWidth = Math.max(1.5, width * 0.22);
+        c.strokeStyle = "rgba(255,255,255,0.55)";
+        c.stroke();
+        c.restore();
+      }
+
+      function enamelBand(c, y, h, halfW, color, kind) {
+        c.save();
+        c.beginPath();
+        c.ellipse(0, y + h, halfW, h * 0.32, 0, 0, Math.PI);
+        c.lineTo(-halfW, y);
+        c.ellipse(0, y, halfW, h * 0.32, 0, Math.PI, 0, true);
         c.closePath();
-        c.fillStyle = bodyMetal;
+        const g = c.createLinearGradient(-halfW, 0, halfW, 0);
+        g.addColorStop(0, "rgba(0,0,0,0.55)");
+        g.addColorStop(0.3, color);
+        g.addColorStop(0.55, "#ffffff55");
+        g.addColorStop(0.7, color);
+        g.addColorStop(1, "rgba(0,0,0,0.6)");
+        c.fillStyle = color;
         c.fill();
-
-        c.beginPath();
-        c.roundRect(-98, 188, 196, 30, 8);
-        c.fillStyle = bodyMetal;
+        c.fillStyle = g;
+        c.globalAlpha = 0.65;
         c.fill();
-
-        c.beginPath();
-        c.roundRect(-120, 218, 240, 38, 10);
-        c.fillStyle = bodyMetal;
-        c.fill();
-        c.strokeStyle = "rgba(255,255,255,0.45)";
+        c.globalAlpha = 1;
         c.lineWidth = 2.5;
+        c.strokeStyle = metalGradient(c, -halfW, halfW, kind);
         c.stroke();
+        c.restore();
+      }
 
+      function star5(c, x, y, r, fill) {
+        c.beginPath();
+        for (let i = 0; i < 10; i++) {
+          const rr = i % 2 === 0 ? r : r * 0.45;
+          const a = -Math.PI / 2 + (i * Math.PI) / 5;
+          c.lineTo(x + Math.cos(a) * rr, y + Math.sin(a) * rr);
+        }
+        c.closePath();
+        c.fillStyle = fill;
+        c.fill();
+      }
+
+      function plinth(c, kind, opts = {}) {
+        const w1 = opts.w1 || 150, w2 = opts.w2 || 190, y0 = opts.y || 228, h1 = 34, h2 = 58;
+        // üst kademe
+        c.beginPath();
+        c.roundRect(-w1, y0, w1 * 2, h1, 6);
+        const tg = c.createLinearGradient(-w1, 0, w1, 0);
+        tg.addColorStop(0, "#050608"); tg.addColorStop(0.45, opts.stone || "#1d2330"); tg.addColorStop(0.55, "#2b3343"); tg.addColorStop(1, "#050608");
+        c.fillStyle = tg;
+        c.fill();
+        // alt kademe
+        c.beginPath();
+        c.roundRect(-w2, y0 + h1, w2 * 2, h2, 8);
+        const bg = c.createLinearGradient(-w2, 0, w2, 0);
+        bg.addColorStop(0, "#030405"); bg.addColorStop(0.5, opts.stone || "#161b26"); bg.addColorStop(1, "#030405");
+        c.fillStyle = bg;
+        c.fill();
+        // metal şeritler
+        c.fillStyle = metalGradient(c, -w2, w2, kind);
+        c.fillRect(-w1, y0, w1 * 2, 4);
+        c.fillRect(-w2, y0 + h1, w2 * 2, 4);
+        c.fillRect(-w2, y0 + h1 + h2 - 5, w2 * 2, 5);
+        // plaket
+        c.beginPath();
+        c.roundRect(-70, y0 + h1 + 16, 140, 26, 4);
+        c.fillStyle = metalGradient(c, -70, 70, kind);
+        c.fill();
+        c.fillStyle = "rgba(0,0,0,0.35)";
+        c.fillRect(-56, y0 + h1 + 27, 112, 3);
+        // yer gölgesi
+        const sh = c.createRadialGradient(0, y0 + h1 + h2 + 6, 10, 0, y0 + h1 + h2 + 6, w2 * 1.3);
+        sh.addColorStop(0, "rgba(0,0,0,0.55)");
+        sh.addColorStop(1, "rgba(0,0,0,0)");
+        c.fillStyle = sh;
+        c.fillRect(-w2 * 1.4, y0 + h1 + h2 - 4, w2 * 2.8, 24);
+      }
+
+      function stem(c, kind, yTop, yBot, wTop, wMid, wBot) {
+        latheBody(c, [[wTop, yTop], [wMid, (yTop + yBot) / 2], [wMid * 1.15, yBot - 18], [wBot, yBot]], kind);
+        // düğüm halkası
+        rimEllipse(c, (yTop + yBot) / 2, wMid + 10, 7, kind, false);
+      }
+
+      function buildTrophyCanvas(variant = "ucl") {
+        const W = 560, H = 640;
+        const off = document.createElement("canvas");
+        off.width = W; off.height = H;
+        const c = off.getContext("2d");
+        c.save();
+        c.translate(W / 2, 330);
+
+        if (variant === "ucl") {
+          // Gümüş, iki büyük kulplu şampiyonluk kupası
+          handle(c, -1, "silver", [[96, -150], [230, -210], [250, -20], [74, 40]], 22);
+          handle(c, 1, "silver", [[96, -150], [230, -210], [250, -20], [74, 40]], 22);
+          latheBody(c, [[132, -205], [128, -120], [108, -20], [70, 60], [34, 100]], "silver");
+          rimEllipse(c, -205, 132, 20, "silver");
+          stem(c, "silver", 98, 190, 30, 22, 64);
+          rimEllipse(c, 190, 70, 12, "silver", false);
+          plinth(c, "silver", { w1: 120, w2: 160, y: 200 });
+          // Gövdeye işlenmiş yıldız kuşağı
+          for (let i = -2; i <= 2; i++) star5(c, i * 34, -150 + Math.abs(i) * 4, 10, "rgba(255,255,255,0.55)");
+        } else if (variant === "europa") {
+          // Uzun, kulpsuz gümüş vazo; altın kabartma kuşak
+          latheBody(c, [[118, -250], [96, -200], [104, -110], [92, -20], [58, 70], [30, 120]], "silver", { bulge: 6 });
+          rimEllipse(c, -250, 118, 17, "silver");
+          enamelBand(c, -150, 30, 101, "#f59e0b", "gold");
+          for (let i = -4; i <= 4; i++) {
+            c.beginPath();
+            c.ellipse(i * 21, -136, 6, 10, 0, 0, Math.PI * 2);
+            c.fillStyle = "rgba(255,247,214,0.7)";
+            c.fill();
+          }
+          stem(c, "silver", 118, 200, 30, 24, 70);
+          rimEllipse(c, 200, 74, 12, "silver", false);
+          plinth(c, "gold", { w1: 128, w2: 168, y: 210, stone: "#1f150d" });
+        } else if (variant === "conference") {
+          // İnce, modern platin lale formu; spiral kurdeleler
+          latheBody(c, [[110, -240], [70, -160], [86, -60], [62, 40], [28, 110]], "platinum", { bulge: 10 });
+          rimEllipse(c, -240, 110, 16, "platinum");
+          c.save();
+          c.beginPath();
+          c.rect(-110, -236, 220, 340);
+          c.clip();
+          for (let k = 0; k < 5; k++) {
+            c.beginPath();
+            for (let y = -230; y <= 100; y += 6) {
+              const half = 30 + 70 * Math.abs(Math.sin((y + 240) / 120));
+              const x = Math.sin(y / 38 + k * 1.25) * half * 0.9;
+              if (y === -230) c.moveTo(x, y); else c.lineTo(x, y);
+            }
+            c.lineWidth = 3;
+            c.strokeStyle = k % 2 ? "rgba(190,242,100,0.55)" : "rgba(255,255,255,0.5)";
+            c.stroke();
+          }
+          c.restore();
+          stem(c, "platinum", 108, 196, 26, 18, 60);
+          rimEllipse(c, 196, 64, 11, "platinum", false);
+          plinth(c, "platinum", { w1: 116, w2: 150, y: 206, stone: "#0d1f16" });
+        } else if (variant === "superlig") {
+          // Altın, yuvarlak gövdeli, kıvrık kulplu; kırmızı mine kuşak
+          handle(c, -1, "gold", [[104, -140], [196, -170], [196, -40], [86, -10]], 18);
+          handle(c, 1, "gold", [[104, -140], [196, -170], [196, -40], [86, -10]], 18);
+          latheBody(c, [[120, -200], [132, -130], [120, -40], [80, 40], [36, 96]], "gold", { bulge: 8 });
+          rimEllipse(c, -200, 120, 19, "gold");
+          enamelBand(c, -112, 34, 128, "#b91c1c", "gold");
+          star5(c, 0, -94, 15, "#fff7d6");
+          for (let i = 0; i < 7; i++) {
+            const ang = Math.PI + (i / 6) * Math.PI;
+            c.beginPath();
+            c.ellipse(Math.cos(ang) * 46, -10 + Math.sin(ang) * -14, 9, 4, ang, 0, Math.PI * 2);
+            c.fillStyle = "rgba(255,247,214,0.55)";
+            c.fill();
+          }
+          stem(c, "gold", 94, 188, 32, 22, 66);
+          rimEllipse(c, 188, 72, 12, "gold", false);
+          plinth(c, "gold", { w1: 124, w2: 164, y: 198, stone: "#2a0a0e" });
+        } else if (variant === "worldcup") {
+          // Altın küre taşıyan spiral sütun
+          c.save();
+          latheBody(c, [[46, -120], [62, -40], [44, 60], [56, 150]], "gold", { bulge: 4 });
+          c.beginPath();
+          c.rect(-70, -120, 140, 270);
+          c.clip();
+          for (let k = 0; k < 6; k++) {
+            c.beginPath();
+            for (let y = -120; y <= 150; y += 5) {
+              const half = 44 + 14 * Math.sin((y + 120) / 85);
+              const x = Math.sin(y / 22 + k) * half;
+              if (y === -120) c.moveTo(x, y); else c.lineTo(x, y);
+            }
+            c.lineWidth = 2.4;
+            c.strokeStyle = "rgba(255,247,214,0.5)";
+            c.stroke();
+          }
+          c.restore();
+          // küre
+          const gr = c.createRadialGradient(-34, -224, 10, 0, -196, 96);
+          gr.addColorStop(0, "#fffbe6");
+          gr.addColorStop(0.35, "#f6c453");
+          gr.addColorStop(0.75, "#a8690f");
+          gr.addColorStop(1, "#3a2104");
+          c.beginPath();
+          c.arc(0, -196, 88, 0, Math.PI * 2);
+          c.fillStyle = gr;
+          c.fill();
+          c.save();
+          c.clip();
+          c.strokeStyle = "rgba(74,42,5,0.55)";
+          c.lineWidth = 2;
+          for (let i = -3; i <= 3; i++) { c.beginPath(); c.ellipse(0, -196, Math.abs(i) * 26 + 6, 88, 0, 0, Math.PI * 2); c.stroke(); }
+          for (let j = -2; j <= 2; j++) { c.beginPath(); c.ellipse(0, -196 + j * 32, 88 * Math.cos(Math.asin(Math.min(1, Math.abs(j * 32) / 88))), 8, 0, 0, Math.PI * 2); c.stroke(); }
+          c.restore();
+          // tutan kollar
+          handle(c, -1, "gold", [[40, -110], [96, -130], [92, -170], [62, -150]], 16);
+          handle(c, 1, "gold", [[40, -110], [96, -130], [92, -170], [62, -150]], 16);
+          rimEllipse(c, 152, 66, 12, "gold", false);
+          plinth(c, "gold", { w1: 118, w2: 156, y: 164, stone: "#07130e" });
+        } else {
+          // league: kapaklı gümüş kupa, küre tepelik, turkuaz mine
+          handle(c, -1, "silver", [[98, -120], [176, -140], [176, -30], [80, 0]], 15);
+          handle(c, 1, "silver", [[98, -120], [176, -140], [176, -30], [80, 0]], 15);
+          latheBody(c, [[112, -170], [118, -100], [102, -20], [66, 50], [30, 100]], "silver", { bulge: 6 });
+          // kapak
+          latheBody(c, [[40, -250], [92, -200], [118, -178]], "silver");
+          rimEllipse(c, -174, 118, 15, "silver", false);
+          const fg = c.createRadialGradient(-8, -278, 3, 0, -268, 24);
+          fg.addColorStop(0, "#ffffff"); fg.addColorStop(0.5, "#cbd5e1"); fg.addColorStop(1, "#475569");
+          c.beginPath(); c.arc(0, -268, 22, 0, Math.PI * 2); c.fillStyle = fg; c.fill();
+          enamelBand(c, -90, 26, 114, "#0d9488", "silver");
+          stem(c, "silver", 98, 188, 30, 22, 64);
+          rimEllipse(c, 188, 70, 12, "silver", false);
+          plinth(c, "silver", { w1: 120, w2: 160, y: 198 });
+        }
         c.restore();
         return off;
-      }
-
-      /* =========================================================================
-         6. PROCEDURAL WEB AUDIO MOTORU (CANLI + OFFLINE VIDEO SES KANALI)
-         ========================================================================= */
-      function initLiveAudio() {
-        if (!liveAudioCtx) {
-          const AC = window.AudioContext || window.webkitAudioContext;
-          if (!AC) return;
-          liveAudioCtx = new AC();
-          liveMasterGain = liveAudioCtx.createGain();
-          liveMasterGain.gain.value = 0.82;
-          liveMasterGain.connect(liveAudioCtx.destination);
-        }
-        if (liveAudioCtx.state === "suspended") {
-          liveAudioCtx.resume().catch(() => {});
-        }
-      }
-
-      function scheduleSoundEvent(ac, dest, ev, t) {
-        try {
-          if (ev.type === "bounce") {
-            const osc = ac.createOscillator();
-            const g = ac.createGain();
-            const k = Math.min(1, ev.intensity || 0.5);
-            const freq = ev.isWall ? 320 + k * 280 : 210 + k * 170;
-            osc.type = ev.isWall ? "sine" : "triangle";
-            osc.frequency.setValueAtTime(freq, t);
-            osc.frequency.exponentialRampToValueAtTime(freq * 0.48, t + 0.05);
-            g.gain.setValueAtTime(Math.min(0.10, 0.02 + k * 0.07), t);
-            g.gain.exponentialRampToValueAtTime(0.0008, t + 0.055);
-            osc.connect(g); g.connect(dest);
-            osc.start(t); osc.stop(t + 0.06);
-          } else if (ev.type === "clang") {
-            // Metalik kılıç çarpışması
-            [1180, 1740].forEach((f, idx) => {
-              const osc = ac.createOscillator();
-              const g = ac.createGain();
-              osc.type = idx === 0 ? "triangle" : "sine";
-              osc.frequency.setValueAtTime(f, t);
-              osc.frequency.exponentialRampToValueAtTime(f * 0.82, t + 0.11);
-              g.gain.setValueAtTime(idx === 0 ? 0.09 : 0.06, t);
-              g.gain.exponentialRampToValueAtTime(0.0008, t + 0.12);
-              osc.connect(g); g.connect(dest);
-              osc.start(t); osc.stop(t + 0.13);
-            });
-          } else if (ev.type === "slash") {
-            const osc = ac.createOscillator();
-            const g = ac.createGain();
-            osc.type = "sawtooth";
-            osc.frequency.setValueAtTime(640, t);
-            osc.frequency.exponentialRampToValueAtTime(140, t + 0.14);
-            g.gain.setValueAtTime(0.14, t);
-            g.gain.exponentialRampToValueAtTime(0.001, t + 0.15);
-            osc.connect(g); g.connect(dest);
-            osc.start(t); osc.stop(t + 0.16);
-          } else if (ev.type === "tick") {
-            const osc = ac.createOscillator();
-            const g = ac.createGain();
-            const urg = Math.min(1, Math.max(0, ev.urgency || 0));
-            const f = 560 + urg * 740;
-            osc.type = "square";
-            osc.frequency.setValueAtTime(f, t);
-            g.gain.setValueAtTime(0.065 + urg * 0.05, t);
-            g.gain.exponentialRampToValueAtTime(0.001, t + 0.06);
-            osc.connect(g); g.connect(dest);
-            osc.start(t); osc.stop(t + 0.065);
-          } else if (ev.type === "explode") {
-            // Patlama bas + gürültü
-            const sub = ac.createOscillator();
-            const sg = ac.createGain();
-            sub.type = "sine";
-            sub.frequency.setValueAtTime(145, t);
-            sub.frequency.exponentialRampToValueAtTime(28, t + 0.45);
-            sg.gain.setValueAtTime(0.32, t);
-            sg.gain.exponentialRampToValueAtTime(0.001, t + 0.48);
-            sub.connect(sg); sg.connect(dest);
-            sub.start(t); sub.stop(t + 0.5);
-
-            const bufLen = Math.floor(ac.sampleRate * 0.35);
-            const buf = ac.createBuffer(1, bufLen, ac.sampleRate);
-            const data = buf.getChannelData(0);
-            for (let i = 0; i < bufLen; i++) data[i] = (Math.random() * 2 - 1) * (1 - i / bufLen);
-            const noise = ac.createBufferSource();
-            noise.buffer = buf;
-            const filter = ac.createBiquadFilter();
-            filter.type = "lowpass";
-            filter.frequency.setValueAtTime(950, t);
-            filter.frequency.exponentialRampToValueAtTime(160, t + 0.35);
-            const ng = ac.createGain();
-            ng.gain.setValueAtTime(0.24, t);
-            ng.gain.exponentialRampToValueAtTime(0.001, t + 0.35);
-            noise.connect(filter); filter.connect(ng); ng.connect(dest);
-            noise.start(t);
-          } else if (ev.type === "zap") {
-            const osc = ac.createOscillator();
-            const g = ac.createGain();
-            osc.type = "sawtooth";
-            osc.frequency.setValueAtTime(980, t);
-            osc.frequency.exponentialRampToValueAtTime(180, t + 0.18);
-            g.gain.setValueAtTime(0.16, t);
-            g.gain.exponentialRampToValueAtTime(0.001, t + 0.19);
-            osc.connect(g); g.connect(dest);
-            osc.start(t); osc.stop(t + 0.2);
-          } else if (ev.type === "elim") {
-            const sub = ac.createOscillator();
-            const sg = ac.createGain();
-            sub.type = "sine";
-            sub.frequency.setValueAtTime(165, t);
-            sub.frequency.exponentialRampToValueAtTime(42, t + 0.24);
-            sg.gain.setValueAtTime(0.22, t);
-            sg.gain.exponentialRampToValueAtTime(0.001, t + 0.26);
-            sub.connect(sg); sg.connect(dest);
-            sub.start(t); sub.stop(t + 0.28);
-          } else if (ev.type === "final2") {
-            [329.63, 440, 523.25].forEach((f, idx) => {
-              const osc = ac.createOscillator();
-              const g = ac.createGain();
-              const st = t + idx * 0.08;
-              osc.type = "triangle";
-              osc.frequency.setValueAtTime(f, st);
-              g.gain.setValueAtTime(0.001, st);
-              g.gain.linearRampToValueAtTime(0.13, st + 0.04);
-              g.gain.exponentialRampToValueAtTime(0.001, st + 0.7);
-              osc.connect(g); g.connect(dest);
-              osc.start(st); osc.stop(st + 0.75);
-            });
-          } else if (ev.type === "victory") {
-            const notes = [261.63, 329.63, 392.0, 523.25, 659.25, 783.99, 1046.5];
-            notes.forEach((f, idx) => {
-              const osc = ac.createOscillator();
-              const g = ac.createGain();
-              const flt = ac.createBiquadFilter();
-              const st = t + idx * 0.085;
-              osc.type = idx < 3 ? "sawtooth" : "triangle";
-              flt.type = "lowpass";
-              flt.frequency.setValueAtTime(2000, st);
-              osc.frequency.setValueAtTime(f, st);
-              g.gain.setValueAtTime(0.001, st);
-              g.gain.linearRampToValueAtTime(idx < 3 ? 0.08 : 0.14, st + 0.06);
-              g.gain.exponentialRampToValueAtTime(0.001, st + 1.65);
-              osc.connect(flt); flt.connect(g); g.connect(dest);
-              osc.start(st); osc.stop(st + 1.7);
-            });
-          }
-        } catch (_) {}
-      }
-
-      function playLiveSound(ev) {
-        if (!config.audioEnabled || !liveAudioCtx || !liveMasterGain) return;
-        const now = liveAudioCtx.currentTime;
-        if (ev.type === "bounce" || ev.type === "clang") {
-          if (now - lastLiveBounceT < 0.05) return;
-          lastLiveBounceT = now;
-        }
-        scheduleSoundEvent(liveAudioCtx, liveMasterGain, ev, now);
-      }
-
-      /* =========================================================================
-         7. 4 MODLU DETERMİNİSTİK SİMÜLASYON & FİZİK MOTORU
-         ========================================================================= */
-      function createBgParticles() {
-        const list = [];
-        for (let i = 0; i < 82; i++) {
-          list.push({
-            x: Math.random() * BASE_W,
-            y: Math.random() * BASE_H,
-            r: 1.3 + Math.random() * 3.4,
-            vy: -12 - Math.random() * 24,
-            vx: (Math.random() - 0.5) * 8,
-            alpha: 0.16 + Math.random() * 0.48,
-            phase: Math.random() * Math.PI * 2,
-            bokeh: Math.random() > 0.78
-          });
-        }
-        return list;
-      }
-
-      function createSimState(cfg) {
-        const activeClubs = allClubs.filter((c) => c.enabled);
-        const pool = [...activeClubs];
-        for (let i = pool.length - 1; i > 0; i--) {
-          const j = Math.floor(Math.random() * (i + 1));
-          [pool[i], pool[j]] = [pool[j], pool[i]];
-        }
-
-        const count = pool.length;
-        // 45+ takımlı Mega Kaos modunda logoların halkaya rahat sığması için akıllı boyut ölçekleme
-        const baseR = cfg.logoRadius;
-        const r = count > 90
-          ? Math.max(19, Math.round(baseR * 0.58))
-          : count > 50
-            ? Math.max(23, Math.round(baseR * 0.72))
-            : count > 38
-              ? Math.max(27, Math.round(baseR * 0.85))
-              : baseR;
-        const startHp = cfg.mode === "blade" ? 3 : cfg.mode === "laser" ? 2 : 1;
-
-        const badges = pool.map((club, idx) => {
-          const frac = (idx + 0.5) / Math.max(count, 1);
-          const dist = Math.sqrt(frac) * (BASE_RING_R - r - 38);
-          const theta = idx * 2.399963229728653;
-          const initSpd = cfg.mode === "ring" ? 310 : 420;
-          const dir = Math.random() * Math.PI * 2;
-          return {
-            club,
-            sprite: club.sprite,
-            x: RING_CX + Math.cos(theta) * dist,
-            y: RING_CY + Math.sin(theta) * dist,
-            vx: Math.cos(dir) * initSpd,
-            vy: Math.sin(dir) * initSpd,
-            r,
-            angle: (Math.random() - 0.5) * 0.3,
-            vAngle: (Math.random() - 0.5) * 2.2,
-            hp: startHp,
-            maxHp: startHp,
-            hitCooldown: 0,
-            flashTimer: 0,
-            kills: 0,
-            bladeAngle: Math.random() * Math.PI * 2,
-            bladeDir: Math.random() < 0.5 ? 1 : -1,
-            eliminated: false,
-            removed: false,
-            trail: []
-          };
-        });
-
-        const hasValidWinner =
-          cfg.selectedWinnerKey !== "random" &&
-          badges.some((b) => b.club.key === cfg.selectedWinnerKey);
-
-        const state = {
-          mode: cfg.mode,
-          simTime: 0,
-          ringAngle: Math.PI * 0.22,
-          ringRadius: BASE_RING_R,
-          laserAngle: Math.PI * 0.15,
-          badges,
-          totalClubs: badges.length,
-          eliminatedList: [],
-          bannerText: "",
-          bannerSubBadge: null,
-          bannerAccent: "#fb7185",
-          bannerAnim: 0,
-          pillPopAnim: 0,
-          ringFlashAnim: 0,
-          shakeIntensity: 0,
-          timeSinceLastElim: 0,
-          finalTwoTriggered: false,
-          slowMoActive: false,
-          winner: null,
-          winnerTime: 0,
-          confettiWave2Fired: false,
-          selectedWinnerKey: hasValidWinner ? cfg.selectedWinnerKey : "random",
-
-          // Bomb mode state
-          bombHolder: null,
-          bombTimer: cfg.bombTimer,
-          bombMaxTimer: cfg.bombTimer,
-          bombTransferCooldown: 0,
-          bombTickAccum: 0,
-
-          // Visual FX
-          bgParticles: createBgParticles(),
-          sparks: [],
-          shockwaves: [],
-          confetti: []
-        };
-
-        if (cfg.mode === "bomb" && badges.length >= 2) {
-          assignNewBomb(state, cfg);
-        }
-
-        return state;
-      }
-
-      function assignNewBomb(state, cfg) {
-        const alive = state.badges.filter((b) => !b.eliminated);
-        if (alive.length <= 1) {
-          state.bombHolder = null;
-          return;
-        }
-        // Seçili kazanan varsa ilk bombayı diğerlerinden birine verme eğilimi
-        const nonWinners = alive.filter((b) => b.club.key !== state.selectedWinnerKey);
-        const pool = nonWinners.length > 0 && Math.random() < 0.72 ? nonWinners : alive;
-        state.bombHolder = pool[Math.floor(Math.random() * pool.length)];
-        state.bombMaxTimer = cfg.bombTimer;
-        state.bombTimer = cfg.bombTimer;
-        state.bombTransferCooldown = 0.25;
-        state.bombTickAccum = 0;
-      }
-
-      function spawnSparks(state, x, y, color = "#e0f2fe", count = 8, speed = 260) {
-        for (let i = 0; i < count; i++) {
-          const ang = Math.random() * Math.PI * 2;
-          const spd = speed * (0.35 + Math.random() * 0.9);
-          state.sparks.push({
-            x, y,
-            vx: Math.cos(ang) * spd,
-            vy: Math.sin(ang) * spd,
-            life: 0.25 + Math.random() * 0.28,
-            maxLife: 0.53,
-            r: 2.2 + Math.random() * 3.8,
-            color
-          });
-        }
-        if (state.sparks.length > 260) state.sparks.splice(0, state.sparks.length - 260);
-      }
-
-      function spawnShockwave(state, x, y, color = "#f97316", maxR = 230) {
-        state.shockwaves.push({ x, y, r: 20, maxR, life: 0.45, maxLife: 0.45, color });
-      }
-
-      function spawnConfettiWave(state, count = 135) {
-        const colors = ["#facc15", "#fde047", "#ffffff", "#38bdf8", "#2563eb", "#f43f5e", "#10b981"];
-        for (let i = 0; i < count; i++) {
-          const side = i % 2 === 0 ? 120 : BASE_W - 120;
-          const ang = i % 2 === 0
-            ? -Math.PI * 0.38 + (Math.random() - 0.5) * 0.75
-            : -Math.PI * 0.62 + (Math.random() - 0.5) * 0.75;
-          const spd = 420 + Math.random() * 780;
-          state.confetti.push({
-            x: side + (Math.random() - 0.5) * 80,
-            y: RING_CY + 140 + (Math.random() - 0.5) * 120,
-            vx: Math.cos(ang) * spd,
-            vy: Math.sin(ang) * spd,
-            w: 11 + Math.random() * 15,
-            h: 6 + Math.random() * 9,
-            color: colors[Math.floor(Math.random() * colors.length)],
-            rot: Math.random() * Math.PI * 2,
-            vRot: (Math.random() - 0.5) * 14
-          });
-        }
-      }
-
-      function eliminateBadge(state, badge, cfg, emitAudio, reasonText, accent = "#fb7185", removeNow = false) {
-        if (badge.eliminated) return;
-        badge.eliminated = true;
-        if (removeNow) badge.removed = true;
-
-        state.eliminatedList.unshift(badge);
-        state.bannerText = reasonText || `${badge.club.name} ELIMINATED`;
-        state.bannerSubBadge = badge;
-        state.bannerAccent = accent;
-        state.bannerAnim = 1.0;
-        state.pillPopAnim = 1.0;
-        state.ringFlashAnim = 1.0;
-        state.shakeIntensity = Math.max(state.shakeIntensity, 10);
-        state.timeSinceLastElim = 0;
-
-        // Ring modunda "Büyüyen Hayatta Kalanlar" aktifse hayatta kalanlar büyür
-        if (state.mode === "ring" && cfg.growSurvivor) {
-          state.badges.forEach((b) => {
-            if (!b.eliminated) b.r = Math.min(cfg.logoRadius * 1.48, b.r + 0.85);
-          });
-        }
-
-        const survivors = state.badges.filter((b) => !b.eliminated);
-        if (survivors.length === 2 && !state.finalTwoTriggered) {
-          state.finalTwoTriggered = true;
-          emitAudio({ type: "final2" });
-        }
-
-        if (survivors.length === 1 && !state.winner) {
-          state.winner = survivors[0];
-          state.winnerTime = 0;
-          state.confettiWave2Fired = false;
-          state.bombHolder = null;
-          spawnConfettiWave(state, 150);
-          emitAudio({ type: "victory" });
-        }
-      }
-
-      function isAngleInAnyGap(angle, ringAngle, gapHalf, doubleGap) {
-        if (Math.abs(angleDiff(angle, ringAngle)) < gapHalf) return true;
-        if (doubleGap && Math.abs(angleDiff(angle, ringAngle + Math.PI)) < gapHalf) return true;
-        return false;
       }
