@@ -347,6 +347,7 @@
       const panelModeBomb = document.getElementById("panelModeBomb");
       const panelModeBlade = document.getElementById("panelModeBlade");
       const panelModeLaser = document.getElementById("panelModeLaser");
+      const panelModeMatch = document.getElementById("panelModeMatch");
 
       // Render overlay
       const renderOverlay = document.getElementById("renderOverlay");
@@ -356,6 +357,3 @@
       const renderDurationText = document.getElementById("renderDurationText");
       const renderClubsText = document.getElementById("renderClubsText");
       const renderSpeedText = document.getElementById("renderSpeedText");
-      const btnCancelRender = document.getElementById("btnCancelRender");
-
-      // Preview controls
