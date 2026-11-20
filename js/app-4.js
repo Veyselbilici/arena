@@ -700,13 +700,13 @@
         const aacCodec = await findSupportedAudioCodec("mp4");
         if (mp4Codec && typeof Mp4Muxer !== "undefined") {
           encoderBadge.textContent = `✓ Hızlı MP4 Hazır (H.264${aacCodec ? " + AAC" : ""})`;
-          encoderBadge.className = "px-3 py-1.5 rounded-full text-xs font-semibold bg-emerald-950/90 border border-emerald-600/60 text-emerald-300";
+          encoderBadge.className = "hidden md:block px-3 py-1.5 rounded-full text-xs font-semibold bg-emerald-950/90 border border-emerald-600/60 text-emerald-300";
         } else if (typeof MediaRecorder !== "undefined") {
           encoderBadge.textContent = "✓ Tarayıcı Video Motoru Hazır";
-          encoderBadge.className = "px-3 py-1.5 rounded-full text-xs font-semibold bg-amber-950/90 border border-amber-600/60 text-amber-200";
+          encoderBadge.className = "hidden md:block px-3 py-1.5 rounded-full text-xs font-semibold bg-amber-950/90 border border-amber-600/60 text-amber-200";
         } else {
           encoderBadge.textContent = "Video Motoru Desteklenmiyor";
-          encoderBadge.className = "px-3 py-1.5 rounded-full text-xs font-semibold bg-rose-950 border border-rose-700 text-rose-200";
+          encoderBadge.className = "hidden md:block px-3 py-1.5 rounded-full text-xs font-semibold bg-rose-950 border border-rose-700 text-rose-200";
         }
       }
 
