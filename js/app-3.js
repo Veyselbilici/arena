@@ -466,8 +466,8 @@
 
         // Dönen kale
         state.goalFlipTimer -= rawDt;
-        if (state.goalFlipTimer <= 0) { state.goalDir *= -1; state.goalFlipTimer = 6 + Math.random() * 5; }
-        state.goalAngle += state.goalDir * cfg.matchGoalSpeed * 0.55 * dt * (attackerSide0(state) ? 0.35 : 1);
+        if (state.goalFlipTimer <= 0) { state.goalDir *= -1; state.goalFlipTimer = 9 + Math.random() * 6; }
+        state.goalAngle += state.goalDir * cfg.matchGoalSpeed * 0.9 * dt * (attackerSide0(state) ? 0.6 : 1);
 
         const gapHalf = ((cfg.matchGoalWidth || 46) * Math.PI) / 360;
         const attackerSide = pending && state.minute >= pending.sort - 3.5 ? pending.side : null;
@@ -691,10 +691,12 @@
         c.restore();
         c.save();
         c.beginPath(); c.arc(MCX, MCY, MR, 0, Math.PI * 2); c.clip();
+        // Saha kaleyle birlikte döner (orta çizgi kaleye dik kalır)
+        c.translate(MCX, MCY); c.rotate(state.goalAngle + Math.PI / 2); c.translate(-MCX, -MCY);
         const stripes = 12, sh = (MR * 2) / stripes;
         for (let i = 0; i < stripes; i++) {
           c.fillStyle = i % 2 === 0 ? "#2f9e44" : "#37b24d";
-          c.fillRect(MCX - MR, MCY - MR + i * sh, MR * 2, sh + 1);
+          c.fillRect(MCX - MR - 20, MCY - MR + i * sh, MR * 2 + 40, sh + 1);
         }
         const vg = c.createRadialGradient(MCX, MCY - 120, 60, MCX, MCY, MR);
         vg.addColorStop(0, "rgba(255,255,255,0.10)"); vg.addColorStop(1, "rgba(0,0,0,0.28)");
@@ -703,6 +705,14 @@
         c.lineWidth = 5;
         c.beginPath(); c.moveTo(MCX - MR, MCY); c.lineTo(MCX + MR, MCY); c.stroke();
         c.beginPath(); c.arc(MCX, MCY, 96, 0, Math.PI * 2); c.stroke();
+        // Kale önündeki ceza sahası ve karşı taraftaki ceza sahası
+        c.fillStyle = "rgba(255,255,255,0.85)";
+        for (const sgn of [1, -1]) {
+          const yEdge = MCY + sgn * MR;
+          c.strokeRect(MCX - 150, sgn > 0 ? yEdge - 120 : yEdge, 300, 120);
+          c.strokeRect(MCX - 70, sgn > 0 ? yEdge - 50 : yEdge, 140, 50);
+          c.beginPath(); c.arc(MCX, yEdge - sgn * 85, 5, 0, Math.PI * 2); c.fill();
+        }
         c.fillStyle = "rgba(255,255,255,0.85)";
         c.beginPath(); c.arc(MCX, MCY, 8, 0, Math.PI * 2); c.fill();
         c.restore();
@@ -746,6 +756,16 @@
         c.strokeStyle = "#ffffff";
         c.shadowColor = "rgba(255,255,255,0.5)"; c.shadowBlur = 10;
         c.beginPath(); c.arc(MCX, MCY, MR, ga + gapHalf, ga - gapHalf + Math.PI * 2); c.stroke();
+        c.shadowBlur = 0;
+        c.lineWidth = 4;
+        c.strokeStyle = "rgba(255,255,255,0.55)";
+        for (let k = 1; k < 24; k++) {
+          const a = ga + gapHalf + (k / 24) * (Math.PI * 2 - gapHalf * 2);
+          c.beginPath();
+          c.moveTo(MCX + Math.cos(a) * (MR + 10), MCY + Math.sin(a) * (MR + 10));
+          c.lineTo(MCX + Math.cos(a) * (MR + 24), MCY + Math.sin(a) * (MR + 24));
+          c.stroke();
+        }
         c.fillStyle = "#ffffff";
         for (const s of [-1, 1]) {
           c.beginPath(); c.arc(MCX + Math.cos(ga + s * gapHalf) * MR, MCY + Math.sin(ga + s * gapHalf) * MR, 11, 0, Math.PI * 2); c.fill();
