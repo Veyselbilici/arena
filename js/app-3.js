@@ -1,4 +1,373 @@
 "use strict";
+      const trophyCanvases = {};
+      function getTrophyCanvas(variant) {
+        if (!trophyCanvases[variant]) trophyCanvases[variant] = buildTrophyCanvas(variant);
+        return trophyCanvases[variant];
+      }
+      /* =========================================================================
+         6. PROCEDURAL WEB AUDIO MOTORU (CANLI + OFFLINE VIDEO SES KANALI)
+         ========================================================================= */
+      function initLiveAudio() {
+        if (!liveAudioCtx) {
+          const AC = window.AudioContext || window.webkitAudioContext;
+          if (!AC) return;
+          liveAudioCtx = new AC();
+          liveMasterGain = liveAudioCtx.createGain();
+          liveMasterGain.gain.value = 0.82;
+          liveMasterGain.connect(liveAudioCtx.destination);
+        }
+        if (liveAudioCtx.state === "suspended") {
+          liveAudioCtx.resume().catch(() => {});
+        }
+      }
+
+      function scheduleSoundEvent(ac, dest, ev, t) {
+        try {
+          const prof = (THEMES[ev.theme] || THEMES.ucl).sound;
+          const k = Math.pow(2, (prof.key || 0) / 12);
+          const mode = ev.mode || "ring";
+
+          const tone = (type, f0, f1, gain, dur, start = t, filterHz = 0) => {
+            const osc = ac.createOscillator();
+            const g = ac.createGain();
+            osc.type = type;
+            osc.frequency.setValueAtTime(f0, start);
+            if (f1) osc.frequency.exponentialRampToValueAtTime(Math.max(20, f1), start + dur);
+            g.gain.setValueAtTime(0.0001, start);
+            g.gain.exponentialRampToValueAtTime(gain, start + Math.min(0.012, dur * 0.2));
+            g.gain.exponentialRampToValueAtTime(0.0005, start + dur);
+            let node = osc;
+            if (filterHz) {
+              const fl = ac.createBiquadFilter();
+              fl.type = "lowpass";
+              fl.frequency.setValueAtTime(filterHz, start);
+              osc.connect(fl);
+              node = fl;
+            }
+            node.connect(g);
+            g.connect(dest);
+            osc.start(start);
+            osc.stop(start + dur + 0.02);
+          };
+          const noise = (dur, gain, type, f0, f1, start = t, q = 0.8) => {
+            const len = Math.max(1, Math.floor(ac.sampleRate * dur));
+            const buf = ac.createBuffer(1, len, ac.sampleRate);
+            const d = buf.getChannelData(0);
+            for (let i = 0; i < len; i++) d[i] = Math.random() * 2 - 1;
+            const src = ac.createBufferSource();
+            src.buffer = buf;
+            const fl = ac.createBiquadFilter();
+            fl.type = type;
+            fl.Q.value = q;
+            fl.frequency.setValueAtTime(f0, start);
+            if (f1) fl.frequency.exponentialRampToValueAtTime(f1, start + dur);
+            const g = ac.createGain();
+            g.gain.setValueAtTime(0.0001, start);
+            g.gain.exponentialRampToValueAtTime(gain, start + Math.min(0.05, dur * 0.25));
+            g.gain.exponentialRampToValueAtTime(0.0005, start + dur);
+            src.connect(fl); fl.connect(g); g.connect(dest);
+            src.start(start);
+            src.stop(start + dur + 0.02);
+          };
+          const crowd = (dur, gain, start = t) => {
+            noise(dur, gain, "bandpass", 700, 1100, start, 0.6);
+            noise(dur * 0.9, gain * 0.6, "bandpass", 1800, 2400, start + 0.05, 1.2);
+          };
+          const kick = (start) => tone("sine", 150, 42, 0.32, 0.28, start);
+          const snare = (start) => { noise(0.16, 0.16, "highpass", 1800, 0, start); tone("triangle", 220, 150, 0.06, 0.1, start); };
+
+          if (ev.type === "bounce") {
+            const kx = Math.min(1, ev.intensity || 0.5);
+            if (mode === "bomb") {
+              tone("triangle", (150 + kx * 80) * k, 70 * k, 0.05 + kx * 0.06, 0.09);
+              noise(0.03, 0.03 + kx * 0.03, "bandpass", 1200, 0, t, 2);
+            } else if (mode === "blade") {
+              tone("square", (880 + kx * 300) * k, 640 * k, 0.025 + kx * 0.03, 0.045, t, 3200);
+            } else if (mode === "laser") {
+              tone("sawtooth", (420 + kx * 260) * k, 900 * k, 0.03 + kx * 0.035, 0.07, t, 2200);
+            } else {
+              const f = (ev.isWall ? 320 + kx * 280 : 210 + kx * 170) * k;
+              tone(ev.isWall ? prof.wave === "square" ? "triangle" : "sine" : "triangle", f, f * 0.48, Math.min(0.10, 0.02 + kx * 0.07), 0.055);
+            }
+          } else if (ev.type === "clang") {
+            tone("triangle", 1180 * k, 960 * k, 0.09, 0.12);
+            tone("sine", 1740 * k, 1420 * k, 0.06, 0.12);
+            noise(0.05, 0.05, "highpass", 4000, 0);
+          } else if (ev.type === "slash") {
+            tone("sawtooth", 640 * k, 140 * k, 0.13, 0.15, t, 2600);
+            noise(0.12, 0.08, "bandpass", 3000, 900, t, 1.4);
+          } else if (ev.type === "tick") {
+            const urg = Math.min(1, Math.max(0, ev.urgency || 0));
+            tone("square", (560 + urg * 740) * k, 0, 0.06 + urg * 0.05, 0.06);
+          } else if (ev.type === "explode") {
+            tone("sine", 145, 28, 0.34, 0.5);
+            noise(0.45, 0.26, "lowpass", 1100, 140);
+            crowd(0.9, 0.06 * prof.crowd, t + 0.12);
+          } else if (ev.type === "zap") {
+            tone("sawtooth", 980 * k, 180 * k, 0.15, 0.19, t, 3000);
+            tone("square", 1960 * k, 360 * k, 0.04, 0.12);
+          } else if (ev.type === "elim") {
+            if (mode === "ring") {
+              noise(0.35, 0.10, "bandpass", 2400, 300, t, 1.1); // aşağı doğru "vuuş"
+              tone("sine", 165 * k, 42 * k, 0.2, 0.26);
+            } else {
+              tone("sine", 165 * k, 42 * k, 0.22, 0.26);
+            }
+            if (prof.crowd > 0.7) crowd(0.5, 0.035 * prof.crowd, t + 0.05);
+          } else if (ev.type === "final2") {
+            prof.fanfare.slice(0, 3).forEach((f, i) => tone(prof.wave, f, 0, 0.12, 0.75, t + i * 0.08, 2600));
+            crowd(1.2, 0.05 * prof.crowd, t);
+            if (prof.drums) [0, 0.24, 0.48].forEach((d) => kick(t + d));
+          } else if (ev.type === "victory") {
+            prof.fanfare.forEach((f, i) => {
+              const st = t + i * 0.09;
+              tone(prof.brass, f, 0, i < 3 ? 0.08 : 0.13, 1.6, st, 2200);
+              tone("sine", f * 2, 0, 0.025, 1.2, st);
+            });
+            const last = prof.fanfare[prof.fanfare.length - 1];
+            [last * 0.5, last * 0.63, last * 0.75].forEach((f) => tone(prof.brass, f, 0, 0.07, 2.4, t + 0.7, 1800));
+            crowd(3.2, 0.11 * prof.crowd, t + 0.1);
+            if (prof.drums) {
+              for (let b = 0; b < 8; b++) {
+                const st = t + 0.2 + b * 0.22;
+                if (b % 2 === 0) kick(st); else snare(st);
+              }
+            }
+          }
+        } catch (_) {}
+      }
+
+      function playLiveSound(ev) {
+        if (!config.audioEnabled || !liveAudioCtx || !liveMasterGain) return;
+        const now = liveAudioCtx.currentTime;
+        if (ev.type === "bounce" || ev.type === "clang") {
+          if (now - lastLiveBounceT < 0.05) return;
+          lastLiveBounceT = now;
+        }
+        scheduleSoundEvent(liveAudioCtx, liveMasterGain, { ...ev, theme: config.theme, mode: config.mode }, now);
+      }
+
+      /* =========================================================================
+         7. 4 MODLU DETERMİNİSTİK SİMÜLASYON & FİZİK MOTORU
+         ========================================================================= */
+      function createBgParticles() {
+        const list = [];
+        for (let i = 0; i < 82; i++) {
+          list.push({
+            x: Math.random() * BASE_W,
+            y: Math.random() * BASE_H,
+            r: 1.3 + Math.random() * 3.4,
+            vy: -12 - Math.random() * 24,
+            vx: (Math.random() - 0.5) * 8,
+            alpha: 0.16 + Math.random() * 0.48,
+            phase: Math.random() * Math.PI * 2,
+            bokeh: Math.random() > 0.78
+          });
+        }
+        return list;
+      }
+
+      // Takım sayısına göre logoların halkaya sığacağı en büyük boyut (alan doluluğu ~%50)
+      function computeBadgeRadius(baseR, count) {
+        const fit = Math.floor((0.7 * (BASE_RING_R - 40)) / Math.sqrt(Math.max(1, count)));
+        return Math.max(16, Math.min(baseR, fit));
+      }
+
+      function createSimState(cfg) {
+        const activeClubs = allClubs.filter((c) => c.enabled);
+        const pool = [...activeClubs];
+        for (let i = pool.length - 1; i > 0; i--) {
+          const j = Math.floor(Math.random() * (i + 1));
+          [pool[i], pool[j]] = [pool[j], pool[i]];
+        }
+
+        const count = pool.length;
+        // 45+ takımlı Mega Kaos modunda logoların halkaya rahat sığması için akıllı boyut ölçekleme
+        const baseR = cfg.logoRadius;
+        const r = computeBadgeRadius(baseR, count);
+        const startHp = cfg.mode === "blade" ? 3 : cfg.mode === "laser" ? 2 : 1;
+
+        const badges = pool.map((club, idx) => {
+          const frac = (idx + 0.5) / Math.max(count, 1);
+          const dist = Math.sqrt(frac) * (BASE_RING_R - r - 38);
+          const theta = idx * 2.399963229728653;
+          const initSpd = cfg.mode === "ring" ? 310 : 420;
+          const dir = Math.random() * Math.PI * 2;
+          return {
+            club,
+            sprite: club.sprite,
+            x: RING_CX + Math.cos(theta) * dist,
+            y: RING_CY + Math.sin(theta) * dist,
+            vx: Math.cos(dir) * initSpd,
+            vy: Math.sin(dir) * initSpd,
+            r,
+            angle: (Math.random() - 0.5) * 0.3,
+            vAngle: (Math.random() - 0.5) * 2.2,
+            hp: startHp,
+            maxHp: startHp,
+            hitCooldown: 0,
+            flashTimer: 0,
+            kills: 0,
+            bladeAngle: Math.random() * Math.PI * 2,
+            bladeDir: Math.random() < 0.5 ? 1 : -1,
+            eliminated: false,
+            removed: false,
+            trail: []
+          };
+        });
+
+        const hasValidWinner =
+          cfg.selectedWinnerKey !== "random" &&
+          badges.some((b) => b.club.key === cfg.selectedWinnerKey);
+
+        const state = {
+          mode: cfg.mode,
+          simTime: 0,
+          ringAngle: Math.PI * 0.22,
+          ringRadius: BASE_RING_R,
+          laserAngle: Math.PI * 0.15,
+          badges,
+          totalClubs: badges.length,
+          eliminatedList: [],
+          bannerText: "",
+          bannerSubBadge: null,
+          bannerAccent: "#fb7185",
+          bannerAnim: 0,
+          pillPopAnim: 0,
+          ringFlashAnim: 0,
+          shakeIntensity: 0,
+          timeSinceLastElim: 0,
+          finalTwoTriggered: false,
+          slowMoActive: false,
+          winner: null,
+          winnerTime: 0,
+          confettiWave2Fired: false,
+          selectedWinnerKey: hasValidWinner ? cfg.selectedWinnerKey : "random",
+
+          // Bomb mode state
+          bombHolder: null,
+          bombTimer: cfg.bombTimer,
+          bombMaxTimer: cfg.bombTimer,
+          bombTransferCooldown: 0,
+          bombTickAccum: 0,
+
+          // Visual FX
+          bgParticles: createBgParticles(),
+          sparks: [],
+          shockwaves: [],
+          confetti: []
+        };
+
+        if (cfg.mode === "bomb" && badges.length >= 2) {
+          assignNewBomb(state, cfg);
+        }
+
+        return state;
+      }
+
+      function assignNewBomb(state, cfg) {
+        const alive = state.badges.filter((b) => !b.eliminated);
+        if (alive.length <= 1) {
+          state.bombHolder = null;
+          return;
+        }
+        // Seçili kazanan varsa ilk bombayı diğerlerinden birine verme eğilimi
+        const nonWinners = alive.filter((b) => b.club.key !== state.selectedWinnerKey);
+        const pool = nonWinners.length > 0 && Math.random() < 0.72 ? nonWinners : alive;
+        state.bombHolder = pool[Math.floor(Math.random() * pool.length)];
+        state.bombMaxTimer = cfg.bombTimer;
+        state.bombTimer = cfg.bombTimer;
+        state.bombTransferCooldown = 0.25;
+        state.bombTickAccum = 0;
+      }
+
+      function spawnSparks(state, x, y, color = "#e0f2fe", count = 8, speed = 260) {
+        for (let i = 0; i < count; i++) {
+          const ang = Math.random() * Math.PI * 2;
+          const spd = speed * (0.35 + Math.random() * 0.9);
+          state.sparks.push({
+            x, y,
+            vx: Math.cos(ang) * spd,
+            vy: Math.sin(ang) * spd,
+            life: 0.25 + Math.random() * 0.28,
+            maxLife: 0.53,
+            r: 2.2 + Math.random() * 3.8,
+            color
+          });
+        }
+        if (state.sparks.length > 260) state.sparks.splice(0, state.sparks.length - 260);
+      }
+
+      function spawnShockwave(state, x, y, color = "#f97316", maxR = 230) {
+        state.shockwaves.push({ x, y, r: 20, maxR, life: 0.45, maxLife: 0.45, color });
+      }
+
+      function spawnConfettiWave(state, count = 135) {
+        const colors = ["#facc15", "#fde047", "#ffffff", "#38bdf8", "#2563eb", "#f43f5e", "#10b981"];
+        for (let i = 0; i < count; i++) {
+          const side = i % 2 === 0 ? 120 : BASE_W - 120;
+          const ang = i % 2 === 0
+            ? -Math.PI * 0.38 + (Math.random() - 0.5) * 0.75
+            : -Math.PI * 0.62 + (Math.random() - 0.5) * 0.75;
+          const spd = 420 + Math.random() * 780;
+          state.confetti.push({
+            x: side + (Math.random() - 0.5) * 80,
+            y: RING_CY + 140 + (Math.random() - 0.5) * 120,
+            vx: Math.cos(ang) * spd,
+            vy: Math.sin(ang) * spd,
+            w: 11 + Math.random() * 15,
+            h: 6 + Math.random() * 9,
+            color: colors[Math.floor(Math.random() * colors.length)],
+            rot: Math.random() * Math.PI * 2,
+            vRot: (Math.random() - 0.5) * 14
+          });
+        }
+      }
+
+      function eliminateBadge(state, badge, cfg, emitAudio, reasonText, accent = "#fb7185", removeNow = false) {
+        if (badge.eliminated) return;
+        badge.eliminated = true;
+        if (removeNow) badge.removed = true;
+
+        state.eliminatedList.unshift(badge);
+        state.bannerText = reasonText || `${badge.club.name} ELIMINATED`;
+        state.bannerSubBadge = badge;
+        state.bannerAccent = accent;
+        state.bannerAnim = 1.0;
+        state.pillPopAnim = 1.0;
+        state.ringFlashAnim = 1.0;
+        state.shakeIntensity = Math.max(state.shakeIntensity, 10);
+        state.timeSinceLastElim = 0;
+
+        // Ring modunda "Büyüyen Hayatta Kalanlar" aktifse hayatta kalanlar büyür
+        if (state.mode === "ring" && cfg.growSurvivor) {
+          state.badges.forEach((b) => {
+            if (!b.eliminated) b.r = Math.min(cfg.logoRadius * 1.48, b.r + 0.85);
+          });
+        }
+
+        const survivors = state.badges.filter((b) => !b.eliminated);
+        if (survivors.length === 2 && !state.finalTwoTriggered) {
+          state.finalTwoTriggered = true;
+          emitAudio({ type: "final2" });
+        }
+
+        if (survivors.length === 1 && !state.winner) {
+          state.winner = survivors[0];
+          state.winnerTime = 0;
+          state.confettiWave2Fired = false;
+          state.bombHolder = null;
+          spawnConfettiWave(state, 150);
+          emitAudio({ type: "victory" });
+        }
+      }
+
+      function isAngleInAnyGap(angle, ringAngle, gapHalf, doubleGap) {
+        if (Math.abs(angleDiff(angle, ringAngle)) < gapHalf) return true;
+        if (doubleGap && Math.abs(angleDiff(angle, ringAngle + Math.PI)) < gapHalf) return true;
+        return false;
+      }
+
       function stepSimState(state, rawDt, cfg, emitAudio) {
         const aliveList = state.badges.filter((b) => !b.eliminated);
         const aliveCount = aliveList.length;
@@ -200,7 +569,8 @@
             b.vy = b.vy * (1 - 0.04 * subDt) + modeGravity * subDt;
             b.x += b.vx * subDt;
             b.y += b.vy * subDt;
-            b.angle += b.vAngle * subDt;
+            b.vAngle = Math.max(-3.2, Math.min(3.2, b.vAngle));
+            b.angle += b.vAngle * subDt * cfg.spinSpeed;
 
             if (b.eliminated) {
               if (step === 0) {
@@ -421,582 +791,4 @@
           }
           b.vAngle *= 0.99;
         }
-      }
-
-      function applyBladeHit(state, attacker, victim, cfg, emitAudio) {
-        victim.hitCooldown = 0.48;
-        victim.flashTimer = 0.24;
-        const dx = victim.x - attacker.x;
-        const dy = victim.y - attacker.y;
-        const d = Math.hypot(dx, dy) || 1;
-        victim.vx += (dx / d) * 340;
-        victim.vy += (dy / d) * 340;
-        attacker.bladeDir *= -1;
-
-        const isProtectedVictim = state.selectedWinnerKey !== "random" && victim.club.key === state.selectedWinnerKey;
-        if (isProtectedVictim && victim.hp <= 1) {
-          // Şampiyon kılıç savunması (Parry)
-          spawnSparks(state, victim.x, victim.y, "#facc15", 12, 340);
-          emitAudio({ type: "clang" });
-          return;
-        }
-
-        victim.hp -= 1;
-        spawnSparks(state, victim.x, victim.y, "#fb7185", 14, 340);
-        emitAudio({ type: "slash" });
-        state.shakeIntensity = Math.max(state.shakeIntensity, 6);
-
-        if (victim.hp <= 0) {
-          attacker.kills += 1;
-          spawnShockwave(state, victim.x, victim.y, "#f43f5e", 160);
-          eliminateBadge(
-            state, victim, cfg, emitAudio,
-            `${attacker.club.name} ⚔️ ${victim.club.name}`,
-            "#f43f5e", true
-          );
-        }
-      }
-
-      /* =========================================================================
-         8. 1080×1920 YAYIN KALİTESİNDE CANVAS ÇİZİM MOTORU
-         ========================================================================= */
-      function drawSpacedText(c, text, x, y, spacing) {
-        const chars = text.split("");
-        let totalW = 0;
-        const widths = chars.map((ch) => {
-          const w = c.measureText(ch).width;
-          totalW += w + spacing;
-          return w;
-        });
-        totalW -= spacing;
-        let curX = x - totalW / 2;
-        c.textAlign = "left";
-        chars.forEach((ch, idx) => {
-          c.fillText(ch, curX, y);
-          curX += widths[idx] + spacing;
-        });
-        c.textAlign = "center";
-      }
-
-      function renderSimState(c, state, cfg, targetW = BASE_W, targetH = BASE_H) {
-        const theme = THEMES[cfg.theme] || THEMES.ucl;
-        c.save();
-        if (targetW !== BASE_W || targetH !== BASE_H) {
-          c.scale(targetW / BASE_W, targetH / BASE_H);
-        }
-
-        if (state.shakeIntensity > 0.2) {
-          c.translate(
-            (Math.random() - 0.5) * state.shakeIntensity,
-            (Math.random() - 0.5) * state.shakeIntensity
-          );
-        }
-
-        // 1. Tema Arka Planı
-        const bgGrad = c.createRadialGradient(BASE_W * 0.5, BASE_H * 0.36, 60, BASE_W * 0.5, BASE_H * 0.5, BASE_H * 0.78);
-        bgGrad.addColorStop(0.0, theme.bg0);
-        bgGrad.addColorStop(0.36, theme.bg1);
-        bgGrad.addColorStop(0.76, theme.bg2);
-        bgGrad.addColorStop(1.0, theme.bg3);
-        c.fillStyle = bgGrad;
-        c.fillRect(-25, -25, BASE_W + 50, BASE_H + 50);
-
-        // Üst stadyum ışık huzmeleri
-        c.save();
-        const rayGrad = c.createLinearGradient(0, 0, 0, 740);
-        rayGrad.addColorStop(0, theme.rayColor);
-        rayGrad.addColorStop(1, "rgba(0,0,0,0)");
-        c.fillStyle = rayGrad;
-        for (let i = -1; i <= 1; i++) {
-          c.beginPath();
-          c.moveTo(BASE_W / 2 + i * 260, -20);
-          c.lineTo(BASE_W / 2 + i * 480 + 180, 760);
-          c.lineTo(BASE_W / 2 + i * 480 - 180, 760);
-          c.closePath();
-          c.fill();
-        }
-        c.restore();
-
-        // Yıldızlar / Ateş Kıvılcımları
-        for (const s of state.bgParticles) {
-          const tw = 0.5 + 0.5 * Math.sin(state.simTime * 2.4 + s.phase);
-          const col = theme.emberMode ? `rgba(251, 146, 60, ${s.alpha * tw})` : `rgba(219, 234, 254, ${s.alpha * tw})`;
-          if (s.bokeh) {
-            const g = c.createRadialGradient(s.x, s.y, 0, s.x, s.y, s.r * 3.8);
-            g.addColorStop(0, col);
-            g.addColorStop(1, "rgba(0,0,0,0)");
-            c.fillStyle = g;
-            c.beginPath();
-            c.arc(s.x, s.y, s.r * 3.8, 0, Math.PI * 2);
-            c.fill();
-          } else {
-            c.fillStyle = col;
-            c.beginPath();
-            c.arc(s.x, s.y, s.r, 0, Math.PI * 2);
-            c.fill();
-          }
-        }
-
-        const R = state.ringRadius;
-        const activeCount = state.badges.filter((b) => !b.eliminated).length;
-        const finalTension = activeCount <= 2 && !state.winner;
-
-        // Arena Arkası Aura
-        const aura = c.createRadialGradient(RING_CX, RING_CY, 80, RING_CX, RING_CY, R + 135);
-        aura.addColorStop(0, finalTension ? "rgba(250, 204, 21, 0.30)" : theme.auraColor);
-        aura.addColorStop(0.68, "rgba(8, 12, 32, 0.45)");
-        aura.addColorStop(1, "rgba(0, 0, 0, 0)");
-        c.fillStyle = aura;
-        c.beginPath();
-        c.arc(RING_CX, RING_CY, R + 135, 0, Math.PI * 2);
-        c.fill();
-
-        // Arena İçi Zemin + Merkez Kupa
-        c.save();
-        c.beginPath();
-        c.arc(RING_CX, RING_CY, R, 0, Math.PI * 2);
-        c.fillStyle = "rgba(3, 6, 20, 0.65)";
-        c.fill();
-        c.clip();
-
-        const trophyAlpha = 0.28 + Math.sin(state.simTime * 1.8) * 0.04 + (state.winner ? 0.24 : 0);
-        c.save();
-        c.globalAlpha = trophyAlpha;
-        if (customTrophyImg) {
-          const sc = Math.min(480 / customTrophyImg.naturalWidth, 540 / customTrophyImg.naturalHeight);
-          const tw = customTrophyImg.naturalWidth * sc;
-          const th = customTrophyImg.naturalHeight * sc;
-          c.drawImage(customTrophyImg, RING_CX - tw / 2, RING_CY - th / 2 + 12, tw, th);
-        } else {
-          const tCanv = theme.trophyType === "gold" ? goldTrophyCanvas : silverTrophyCanvas;
-          if (tCanv) c.drawImage(tCanv, RING_CX - 280, RING_CY - 310, 560, 640);
-        }
-        c.restore();
-
-        // Kupa ışık süpürmesi
-        const sweepCycle = (state.simTime * 0.35) % 1;
-        if (sweepCycle < 0.45) {
-          const sweepX = RING_CX - 340 + (sweepCycle / 0.45) * 680;
-          const sg = c.createLinearGradient(sweepX - 70, RING_CY - 250, sweepX + 70, RING_CY + 250);
-          sg.addColorStop(0, "rgba(255,255,255,0)");
-          sg.addColorStop(0.5, "rgba(255,255,255,0.09)");
-          sg.addColorStop(1, "rgba(255,255,255,0)");
-          c.fillStyle = sg;
-          c.fillRect(RING_CX - R, RING_CY - R, R * 2, R * 2);
-        }
-        c.restore();
-
-        // 2. Üst Başlıklar & Kalan Kulüp Kapsülü
-        c.save();
-        c.textAlign = "center";
-
-        c.font = "800 34px 'Montserrat', sans-serif";
-        c.fillStyle = theme.subColor;
-        c.shadowColor = "rgba(250, 204, 21, 0.38)";
-        c.shadowBlur = 16;
-        drawSpacedText(c, (cfg.subTitle || theme.subDefault).toUpperCase(), BASE_W / 2, 224, 7.2);
-
-        c.font = "900 88px 'Montserrat', sans-serif";
-        c.fillStyle = "#ffffff";
-        c.shadowColor = "rgba(56, 189, 248, 0.35)";
-        c.shadowBlur = 24;
-        c.fillText((cfg.mainTitle || "WHO SURVIVES?").toUpperCase(), BASE_W / 2, 326);
-
-        const pillScale = 1 + Math.sin(state.pillPopAnim * Math.PI) * 0.08;
-        c.save();
-        c.translate(BASE_W / 2, 408);
-        c.scale(pillScale, pillScale);
-        c.fillStyle = "rgba(9, 15, 42, 0.86)";
-        c.strokeStyle = finalTension ? "rgba(250, 204, 21, 0.92)" : "rgba(226, 232, 240, 0.72)";
-        c.lineWidth = 3;
-        c.beginPath();
-        c.roundRect(-245, -34, 490, 68, 34);
-        c.fill();
-        c.stroke();
-
-        c.font = "800 31px 'Inter', sans-serif";
-        c.fillStyle = finalTension ? "#fef08a" : "#f8fafc";
-        c.textBaseline = "middle";
-        const modeTag = state.slowMoActive ? "⚡ FINAL DUEL • 2 CLUBS" : `REMAINING CLUBS: ${activeCount}`;
-        c.fillText(modeTag, 0, 1);
-        c.restore();
-        c.restore();
-
-        // 3. ÖLÜM LAZERİ IŞINLARI (Laser Modu)
-        if (state.mode === "laser" && !state.winner) {
-          const beams = cfg.laserCount === 2 ? [state.laserAngle, state.laserAngle + Math.PI] : [state.laserAngle];
-          c.save();
-          for (const bAng of beams) {
-            const lx = RING_CX + Math.cos(bAng) * R;
-            const ly = RING_CY + Math.sin(bAng) * R;
-            // Dış neon uyarı parlaması
-            c.beginPath();
-            c.moveTo(RING_CX, RING_CY);
-            c.lineTo(lx, ly);
-            c.strokeStyle = "rgba(34, 211, 238, 0.35)";
-            c.lineWidth = 26;
-            c.lineCap = "round";
-            c.stroke();
-            // İç lazer çekirdeği
-            c.beginPath();
-            c.moveTo(RING_CX, RING_CY);
-            c.lineTo(lx, ly);
-            c.strokeStyle = "#ffffff";
-            c.lineWidth = 8;
-            c.shadowColor = "#06b6d4";
-            c.shadowBlur = 24;
-            c.stroke();
-          }
-          // Merkez lazer çekirdeği
-          c.beginPath();
-          c.arc(RING_CX, RING_CY, 22, 0, Math.PI * 2);
-          c.fillStyle = "#06b6d4";
-          c.shadowColor = "#22d3ee";
-          c.shadowBlur = 28;
-          c.fill();
-          c.beginPath();
-          c.arc(RING_CX, RING_CY, 10, 0, Math.PI * 2);
-          c.fillStyle = "#ffffff";
-          c.fill();
-          c.restore();
-        }
-
-        // 4. Şampiyonluk Dönen Altın Işık Huzmeleri
-        if (state.winner) {
-          c.save();
-          c.translate(RING_CX, RING_CY - 20);
-          c.rotate(state.winnerTime * 0.45);
-          for (let i = 0; i < 14; i++) {
-            c.rotate((Math.PI * 2) / 14);
-            const g = c.createLinearGradient(0, 0, 0, -390);
-            g.addColorStop(0, "rgba(250, 204, 21, 0.38)");
-            g.addColorStop(1, "rgba(250, 204, 21, 0)");
-            c.fillStyle = g;
-            c.beginPath();
-            c.moveTo(0, 0); c.lineTo(-28, -390); c.lineTo(28, -390);
-            c.closePath();
-            c.fill();
-          }
-          c.restore();
-        }
-
-        // 5. Elenenlerin Kuyruklu İzleri (Ring Modu)
-        for (const b of state.badges) {
-          if (!b.eliminated || b.removed || b.trail.length < 2) continue;
-          for (let i = 0; i < b.trail.length; i++) {
-            const pt = b.trail[i];
-            const ratio = 1 - i / b.trail.length;
-            c.fillStyle = `rgba(251, 113, 133, ${ratio * 0.34})`;
-            c.beginPath();
-            c.arc(pt.x, pt.y, b.r * 0.55 * ratio, 0, Math.PI * 2);
-            c.fill();
-          }
-        }
-
-        // 6. Kulüp Armaları + Mod Özel Görselleri (Kılıçlar, Can Kalkanları, Bomba)
-        for (const b of state.badges) {
-          if (b.removed) continue;
-
-          // Kılıç Savaşı Enerji Kılıcı
-          if (state.mode === "blade" && !b.eliminated && b !== state.winner) {
-            c.save();
-            c.translate(b.x, b.y);
-            c.rotate(b.bladeAngle);
-            const bladeLen = cfg.bladeLength;
-            // Kılıç kabzası
-            c.fillStyle = "#facc15";
-            c.fillRect(b.r - 4, -5, 10, 10);
-            // Parlayan kılıç namlusu
-            const bg = c.createLinearGradient(b.r + 4, 0, b.r + bladeLen, 0);
-            bg.addColorStop(0, "#ffffff");
-            bg.addColorStop(0.5, b.kills > 0 ? "#fde047" : "#38bdf8");
-            bg.addColorStop(1, b.kills > 0 ? "#f97316" : "#818cf8");
-            c.fillStyle = bg;
-            c.shadowColor = b.kills > 0 ? "#f59e0b" : "#38bdf8";
-            c.shadowBlur = 14;
-            c.beginPath();
-            c.moveTo(b.r + 4, -6);
-            c.lineTo(b.r + bladeLen - 8, -4);
-            c.lineTo(b.r + bladeLen + 4, 0);
-            c.lineTo(b.r + bladeLen - 8, 4);
-            c.lineTo(b.r + 4, 6);
-            c.closePath();
-            c.fill();
-            c.restore();
-          }
-
-          c.save();
-          c.translate(b.x, b.y);
-
-          let drawR = b.r;
-          if (b === state.winner) {
-            const grow = 1 + Math.min(state.winnerTime * 1.45, 1.85);
-            drawR = b.r * grow;
-            const halo = c.createRadialGradient(0, 0, drawR * 0.5, 0, 0, drawR * 2.1);
-            halo.addColorStop(0, "rgba(250, 204, 21, 0.72)");
-            halo.addColorStop(0.55, "rgba(250, 204, 21, 0.2)");
-            halo.addColorStop(1, "rgba(250, 204, 21, 0)");
-            c.fillStyle = halo;
-            c.beginPath();
-            c.arc(0, 0, drawR * 2.1, 0, Math.PI * 2);
-            c.fill();
-          }
-
-          // Hasar / Kalkan Halkaları (Blade & Laser)
-          if (!b.eliminated && b !== state.winner && (state.mode === "blade" || state.mode === "laser")) {
-            const segs = b.maxHp;
-            const gapA = 0.28;
-            const segA = (Math.PI * 2) / segs;
-            for (let s = 0; s < segs; s++) {
-              c.beginPath();
-              c.arc(0, 0, drawR + 6, s * segA + gapA / 2 - Math.PI / 2, (s + 1) * segA - gapA / 2 - Math.PI / 2);
-              c.lineWidth = 4.5;
-              c.lineCap = "round";
-              if (s < b.hp) {
-                c.strokeStyle = b.hp === 1 ? "#f97316" : (state.mode === "laser" ? "#38bdf8" : "#34d399");
-              } else {
-                c.strokeStyle = "rgba(148, 163, 184, 0.22)";
-              }
-              c.stroke();
-            }
-          }
-
-          // Kulüp Arması
-          c.save();
-          c.rotate(b.angle);
-          c.shadowColor = b.flashTimer > 0 ? "rgba(244, 63, 94, 0.95)" : "rgba(0, 0, 0, 0.62)";
-          c.shadowBlur = b.flashTimer > 0 ? 24 : 12;
-          c.shadowOffsetY = 4;
-          c.drawImage(b.sprite, -drawR, -drawR, drawR * 2, drawR * 2);
-          c.restore();
-
-          // Hasar kırmızı flaşı
-          if (b.flashTimer > 0) {
-            c.fillStyle = `rgba(244, 63, 94, ${b.flashTimer * 2.1})`;
-            c.beginPath();
-            c.arc(0, 0, drawR, 0, Math.PI * 2);
-            c.fill();
-          }
-
-          // SAATLİ BOMBA GÖSTERGESİ
-          if (state.mode === "bomb" && state.bombHolder === b && !state.winner) {
-            const frac = Math.max(0, state.bombTimer / state.bombMaxTimer);
-            const pulse = 1 + Math.sin(state.simTime * (12 + (1 - frac) * 24)) * 0.12;
-            // Kırmızı/Turuncu geri sayım halkası
-            c.beginPath();
-            c.arc(0, 0, drawR + 12, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * frac);
-            c.strokeStyle = frac < 0.33 ? "#ef4444" : "#facc15";
-            c.lineWidth = 7;
-            c.lineCap = "round";
-            c.shadowColor = "#ef4444";
-            c.shadowBlur = 18;
-            c.stroke();
-
-            // Bomba ikonu + süre
-            c.save();
-            c.translate(drawR * 0.72, -drawR * 0.72);
-            c.scale(pulse, pulse);
-            c.fillStyle = "#111827";
-            c.strokeStyle = "#ef4444";
-            c.lineWidth = 3;
-            c.beginPath();
-            c.arc(0, 0, 20, 0, Math.PI * 2);
-            c.fill();
-            c.stroke();
-            c.font = "900 17px 'Inter', sans-serif";
-            c.fillStyle = "#fef08a";
-            c.textAlign = "center";
-            c.textBaseline = "middle";
-            c.fillText(Math.max(0.1, state.bombTimer).toFixed(1), 0, 1);
-            c.restore();
-          }
-
-          c.restore();
-        }
-
-        // 7. Şok Dalgaları & Kıvılcımlar
-        for (const sw of state.shockwaves) {
-          c.save();
-          c.globalAlpha = Math.max(0, sw.life / sw.maxLife);
-          c.strokeStyle = sw.color;
-          c.lineWidth = 8 * (sw.life / sw.maxLife);
-          c.beginPath();
-          c.arc(sw.x, sw.y, sw.r, 0, Math.PI * 2);
-          c.stroke();
-          c.restore();
-        }
-        for (const p of state.sparks) {
-          c.fillStyle = p.color;
-          c.globalAlpha = Math.max(0, p.life / p.maxLife);
-          c.beginPath();
-          c.arc(p.x, p.y, p.r, 0, Math.PI * 2);
-          c.fill();
-        }
-        c.globalAlpha = 1;
-
-        // 8. Arena Dış Halkası (Ring Modunda Boşluklu, Diğer Modlarda Kapalı Neon Halka)
-        c.save();
-        c.beginPath();
-        c.arc(RING_CX, RING_CY, R + 18, 0, Math.PI * 2);
-        c.strokeStyle = state.ringFlashAnim > 0
-          ? `rgba(251, 113, 133, ${0.32 + state.ringFlashAnim * 0.55})`
-          : finalTension ? "rgba(250, 204, 21, 0.45)" : theme.outerRing;
-        c.lineWidth = 3.5;
-        c.stroke();
-
-        c.strokeStyle = state.ringFlashAnim > 0.25 ? "#ffe4e6" : (finalTension ? "#fef08a" : theme.ringStroke);
-        c.lineWidth = 11;
-        c.lineCap = "round";
-        c.shadowColor = state.ringFlashAnim > 0.25 ? "rgba(244, 63, 94, 0.95)" : (finalTension ? "rgba(250, 204, 21, 0.95)" : theme.ringGlow);
-        c.shadowBlur = 24 + state.ringFlashAnim * 18;
-
-        if (state.mode === "ring") {
-          const gapRad = (cfg.gapDegrees * Math.PI) / 180;
-          const half = gapRad / 2;
-          if (cfg.doubleGap) {
-            // İki yay parçası
-            c.beginPath();
-            c.arc(RING_CX, RING_CY, R, state.ringAngle + half, state.ringAngle + Math.PI - half);
-            c.stroke();
-            c.beginPath();
-            c.arc(RING_CX, RING_CY, R, state.ringAngle + Math.PI + half, state.ringAngle + Math.PI * 2 - half);
-            c.stroke();
-          } else {
-            const arcStart = state.ringAngle + half;
-            const arcEnd = state.ringAngle + Math.PI * 2 - half;
-            c.beginPath();
-            c.arc(RING_CX, RING_CY, R, arcStart, arcEnd);
-            c.stroke();
-            for (const ea of [arcStart, arcEnd]) {
-              c.beginPath();
-              c.arc(RING_CX + Math.cos(ea) * R, RING_CY + Math.sin(ea) * R, 11, 0, Math.PI * 2);
-              c.fillStyle = "#ffffff";
-              c.fill();
-            }
-          }
-        } else {
-          c.beginPath();
-          c.arc(RING_CX, RING_CY, R, 0, Math.PI * 2);
-          c.stroke();
-        }
-        c.restore();
-
-        // 9. Son 2 Ağır Çekim Altın Vinyet Efekti
-        if (state.slowMoActive) {
-          const vig = c.createRadialGradient(BASE_W / 2, BASE_H / 2, BASE_W * 0.35, BASE_W / 2, BASE_H / 2, BASE_H * 0.65);
-          vig.addColorStop(0, "rgba(0,0,0,0)");
-          vig.addColorStop(1, "rgba(250, 204, 21, 0.24)");
-          c.fillStyle = vig;
-          c.fillRect(0, 0, BASE_W, BASE_H);
-        }
-
-        // 10. Alt Duyuru Alanı (Eleme / Şampiyonluk + Mini Elenenler Şeridi + Viral Hook)
-        const feedY = 1585;
-        if (state.winner) {
-          for (const p of state.confetti) {
-            c.save();
-            c.translate(p.x, p.y);
-            c.rotate(p.rot);
-            c.fillStyle = p.color;
-            c.fillRect(-p.w / 2, -p.h / 2, p.w, p.h);
-            c.restore();
-          }
-
-          const pop = Math.min(1, state.winnerTime * 3.5);
-          c.save();
-          c.translate(BASE_W / 2, feedY);
-          c.scale(0.84 + 0.16 * pop, 0.84 + 0.16 * pop);
-          c.textAlign = "center";
-
-          c.font = "900 54px 'Montserrat', sans-serif";
-          c.fillStyle = "#facc15";
-          c.shadowColor = "rgba(250, 204, 21, 0.78)";
-          c.shadowBlur = 28;
-          c.fillText("🏆 CHAMPION! 🏆", 0, -24);
-
-          c.font = "900 62px 'Montserrat', sans-serif";
-          c.fillStyle = "#ffffff";
-          c.shadowColor = "rgba(56, 189, 248, 0.55)";
-          c.shadowBlur = 20;
-          c.fillText(state.winner.club.name, 0, 48);
-          c.restore();
-        } else if (state.bannerSubBadge) {
-          const slideY = state.bannerAnim * 24;
-          const alpha = Math.min(1, 1.35 - state.bannerAnim * 0.7);
-          c.save();
-          c.globalAlpha = Math.max(0.28, alpha);
-          c.translate(BASE_W / 2, feedY + slideY);
-
-          c.font = "900 42px 'Montserrat', sans-serif";
-          const txt = state.bannerText;
-          const textW = Math.min(760, c.measureText(txt).width);
-          const iconSize = 86;
-          const gapX = 22;
-          const totalW = iconSize + gapX + textW;
-          const startX = -totalW / 2;
-
-          c.shadowColor = "rgba(0,0,0,0.6)";
-          c.shadowBlur = 12;
-          c.drawImage(state.bannerSubBadge.sprite, startX, -iconSize / 2, iconSize, iconSize);
-
-          c.textAlign = "left";
-          c.textBaseline = "middle";
-          c.fillStyle = state.bannerAccent;
-          c.shadowColor = state.bannerAccent;
-          c.shadowBlur = 18;
-          c.fillText(txt, startX + iconSize + gapX, 2, 760);
-          c.restore();
-
-          // Mini Elenenler Şeridi
-          const recent = state.eliminatedList.slice(0, 9);
-          if (recent.length > 0) {
-            const miniSize = 46;
-            const miniGap = 15;
-            const rowW = recent.length * miniSize + (recent.length - 1) * miniGap;
-            let mx = (BASE_W - rowW) / 2;
-            c.save();
-            recent.forEach((eb, i) => {
-              c.globalAlpha = Math.max(0.22, 0.85 - i * 0.08);
-              c.drawImage(eb.sprite, mx, 1672, miniSize, miniSize);
-              mx += miniSize + miniGap;
-            });
-            c.restore();
-          }
-        }
-
-        // Viral Alt Etkileşim Kancası (Hook)
-        if (cfg.showViralHook && cfg.viralHook.trim()) {
-          c.save();
-          c.textAlign = "center";
-          c.textBaseline = "middle";
-          const hookText = cfg.viralHook.trim();
-          c.font = "800 28px 'Inter', sans-serif";
-          const pillW = Math.min(960, c.measureText(hookText).width + 70);
-          c.fillStyle = "rgba(15, 23, 42, 0.78)";
-          c.strokeStyle = "rgba(250, 204, 21, 0.45)";
-          c.lineWidth = 2.5;
-          c.beginPath();
-          c.roundRect((BASE_W - pillW) / 2, 1765, pillW, 58, 29);
-          c.fill();
-          c.stroke();
-
-          c.fillStyle = "#fef08a";
-          c.fillText(hookText, BASE_W / 2, 1795, 910);
-          c.restore();
-        }
-
-        // Filigran (@kullaniciadi)
-        if (cfg.watermark && cfg.watermark.trim()) {
-          c.save();
-          c.textAlign = "center";
-          c.textBaseline = "middle";
-          c.font = "800 27px 'Montserrat', sans-serif";
-          c.fillStyle = "rgba(226, 232, 240, 0.62)";
-          c.shadowColor = "rgba(0, 0, 0, 0.8)";
-          c.shadowBlur = 10;
-          c.fillText(cfg.watermark.trim(), BASE_W / 2, 1868);
-          c.restore();
-        }
-
-        c.restore();
       }
