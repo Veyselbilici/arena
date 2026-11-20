@@ -351,14 +351,49 @@
         }
       }
 
+      // Logo sunucusu (espncdn) bazı ağlarda engelli: sırayla yedek aracı sunuculara geç
+      const LOGO_MIRRORS = [
+        (u) => u,
+        (u) => "https://wsrv.nl/?url=" + encodeURIComponent(u.replace(/^https?:\/\//, "")),
+        (u) => "https://images.weserv.nl/?url=" + encodeURIComponent(u.replace(/^https?:\/\//, ""))
+      ];
+      function loadImageWithMirrors(url, onOk, onFail) {
+        let i = 0;
+        const tryNext = () => {
+          if (i >= LOGO_MIRRORS.length) { if (onFail) onFail(); return; }
+          const img = new Image();
+          img.crossOrigin = "anonymous";
+          img.onload = () => {
+            try {
+              const t = document.createElement("canvas"); t.width = t.height = 2;
+              t.getContext("2d").drawImage(img, 0, 0, 2, 2); t.getContext("2d").getImageData(0, 0, 1, 1);
+              onOk(img);
+            } catch (_) { tryNext(); }
+          };
+          img.onerror = tryNext;
+          img.src = LOGO_MIRRORS[i++](url);
+        };
+        tryNext();
+      }
+      // Sayfadaki <img> logoları için de aynı yedekleme
+      document.addEventListener("error", (e) => {
+        const im = e.target;
+        if (!(im instanceof HTMLImageElement)) return;
+        const step = parseInt(im.dataset.mirror || "0", 10) + 1;
+        if (step >= LOGO_MIRRORS.length) return;
+        const orig = im.dataset.orig || im.src;
+        if (!/^https?:/.test(orig) || /flagcdn|wsrv|weserv/.test(orig)) return;
+        im.dataset.orig = orig;
+        im.dataset.mirror = String(step);
+        im.src = LOGO_MIRRORS[step](orig);
+      }, true);
+
       function loadClubLogo(club) {
         if (!club.sprite) club.sprite = createFallbackCrest(club);
         if (club.realLoaded || club.loadingStarted || !club.logoUrl) return;
         club.loadingStarted = true;
 
-        const img = new Image();
-        img.crossOrigin = "anonymous";
-        img.onload = () => {
+        loadImageWithMirrors(club.logoUrl, (img) => {
           try {
             const sprite = club.isFlag ? createFlagSprite(img) : createImageSprite(img);
             sprite.getContext("2d").getImageData(0, 0, 1, 1); // CORS testi
@@ -367,13 +402,9 @@
             if (previewState) {
               previewState.badges.forEach((b) => { if (b.club === club) b.sprite = sprite; });
             }
-            updateLogoStatusUI();
-          } catch (_) {
-            updateLogoStatusUI();
-          }
-        };
-        img.onerror = () => updateLogoStatusUI();
-        img.src = club.logoUrl;
+          } catch (_) {}
+          updateLogoStatusUI();
+        }, () => updateLogoStatusUI());
       }
 
       function preloadClubLogos(onlyEnabled = true) {
